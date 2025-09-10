@@ -1,72 +1,112 @@
-# Getting Started with Create React App
+README.md
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+# Software for automation of warehouse logistics based on RPA technology.
 
-## Available Scripts
+Краткое описание проекта, его цели и основные возможности
 
-In the project directory, you can run:
+Ссылки на репозитории сервера и клиента
 
-### `npm start`
+---
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## **Содержание**
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+1. [Архитектура](#Архитектура)
+	1. [C4-модель](#C4-модель)
+	2. [Схема данных](#Схема_данных)
+2. [Функциональные возможности](#Функциональные_возможности)
+	1. [Диаграмма вариантов использования(#Диаграмма_вариантов_использования)]
+	2. [User-flow диаграммы](#User-flow_диаграммы)
+3. [Детали реализации](#Детали_реализации)
+	1. [UML-диаграммы](#UML-диаграммы)
+	2. [Спецификация API](#Спецификация_API)
+	3. [Безопасность](#Безопасность)
+	4. [Оценка качества кода](#Оценка_качества_кода)
+4. [Тестирование](#Тестирование)
+	1. [Unit-тесты](#Unit-тесты)
+	2. [Интеграционные тесты](#Интеграционные_тесты)
+5. [Установка и  запуск](#installation)
+	1. [Манифесты для сборки docker образов](#Манифесты_для_сборки_docker_образов)
+	2. [Манифесты для развертывания k8s кластера](#Манифесты_для_развертывания_k8s_кластера)
+6. [Лицензия](#Лицензия)
+7. [Контакты](#Контакты)
 
-### `npm test`
+---
+## **Архитектура**
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### C4-модель
 
-### `npm run build`
+Иллюстрация и описание архитектура ПС
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Схема данных
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Описание отношений и структур данных, используемых в ПС. Также представить скрипт (программный код), который необходим для генерации БД
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+---
 
-### `npm run eject`
+## **Функциональные возможности**
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### Диаграмма вариантов использования
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+Диаграмма вариантов использования и ее описание
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+### User-flow диаграммы
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+Описание переходов между части ПС для всех ролей из диаграммы ВИ (название ролей должны совпадать с тем, что указано на c4-модели и диаграмме вариантов использования)
 
-## Learn More
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+---
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## **Детали реализации**
 
-### Code Splitting
+### UML-диаграммы
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+Представить все UML-диаграммы , которые позволят более точно понять структуру и детали реализации ПС
 
-### Analyzing the Bundle Size
+### Спецификация API
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+Представить описание реализованных функциональных возможностей ПС с использованием Open API (можно представить либо полный файл спецификации, либо ссылку на него)
 
-### Making a Progressive Web App
+### Безопасность
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+Описать подходы, использованные для обеспечения безопасности, включая описание процессов аутентификации и авторизации с примерами кода из репозитория сервера
 
-### Advanced Configuration
+### Оценка качества кода
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+Используя показатели качества и метрики кода, оценить его качество
 
-### Deployment
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+## **Тестирование**
 
-### `npm run build` fails to minify
+### Unit-тесты
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Представить код тестов для пяти методов и его пояснение
 
-# wmsProject
+### Интеграционные тесты
+
+Представить код тестов и его пояснение
+
+---
+
+## **Установка и  запуск**
+
+### Манифесты для сборки docker образов
+
+Представить весь код манифестов или ссылки на файлы с ними (при необходимости снабдить комментариями)
+
+### Манифесты для развертывания k8s кластера
+
+Представить весь код манифестов или ссылки на файлы с ними (при необходимости снабдить комментариями)
+
+---
+
+## **Лицензия**
+
+Этот проект лицензирован по лицензии MIT - подробности представлены в файле [[License.md|LICENSE.md]]
+
+---
+
+## **Контакты**
+
+Автор: email
+
