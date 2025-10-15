@@ -26,7 +26,7 @@ const RegisterPage = () => {
             <TextField label="Email" name="email" value={form.email} onChange={handleChange} fullWidth required />
             <TextField label="Имя" name="name" value={form.name} onChange={handleChange} fullWidth required />
             <TextField label="Фамилия" name="surname" value={form.surname} onChange={handleChange} fullWidth required />
-            <TextField label="Отчество" name="aprotyx" value={form.aprotyx} onChange={handleChange} fullWidth required />
+            <TextField label="Отчество" name="aprotyx" value={form.aprotyx} onChange={handleChange} fullWidth />
             <TextField label="Пароль" name="password" type="password" value={form.password} onChange={handleChange} fullWidth required />
             <Button type="submit" variant="contained" color="primary" size="large" fullWidth sx={{ mt: 1, color: '#fff', background: '#005FF9', '&:hover': { background: '#0047b3' } }}>
               Зарегистрироваться

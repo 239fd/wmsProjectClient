@@ -33,53 +33,57 @@ const HomePage = () => {
     return (
         <Box sx={{width: '100%', bgcolor: 'background.default', minHeight: '100vh'}}>
             {/* Hero section */}
-            <Paper elevation={2} sx={{ background: '#fff', borderRadius: 4, p: { xs: 3, md: 6 }, boxShadow: '0 2px 16px 0 rgba(0,0,0,0.04)', width: '100%', maxWidth: 1440, mx: 'auto', mb: 6 }}>
-				<Box
-					sx={{
-						width: '100%',
-						display: 'flex',
-						flexDirection: { xs: 'column', md: 'row' },
-						alignItems: 'center',
-						justifyContent: 'space-between',
-						gap: 6,
-					}}
-				>
-					<Box sx={{ flex: 1 }}>
-						<Typography
-							variant="h2"
-							color="text.primary"
-							sx={{ fontWeight: 800, mb: 2, textAlign: { xs: 'center', md: 'left' } }}
-						>
-							WMS — складская система нового поколения
-						</Typography>
-						<Typography
-							variant="h5"
-							color="text.secondary"
-							sx={{ mb: 4, textAlign: { xs: 'center', md: 'left' }, maxWidth: 600 }}
-						>
-							Управляйте складом, закупками и отчетностью в облаке. Просто. Надежно. Современно.
-						</Typography>
-						<Box display="flex" gap={2} justifyContent={{ xs: 'center', md: 'flex-start' }}>
-							<Button
-								variant="contained"
-								color="primary"
-								size="large"
-								onClick={() => navigate('/login')}
-							>
-								Вход
-							</Button>
-							<Button
-								variant="outlined"
-								color="primary"
-								size="large"
-								onClick={() => navigate('/register')}
-							>
-								Регистрация
-							</Button>
-						</Box>
-					</Box>
-				</Box>
-			</Paper>
+            <Box sx={{width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+                <Box sx={{width: '100%', maxWidth: MAX_WIDTH, px: {xs: 2, md: 6}, my: 3}}>
+                    <Paper elevation={2} sx={{ background: '#fff', borderRadius: 4, p: { xs: 3, md: 6 }, boxShadow: '0 2px 16px 0 rgba(0,0,0,0.04)', width: '100%' }}>
+                        <Box
+                            sx={{
+                                width: '100%',
+                                display: 'flex',
+                                flexDirection: { xs: 'column', md: 'row' },
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 6,
+                            }}
+                        >
+                            <Box sx={{ flex: 1 }}>
+                                <Typography
+                                    variant="h2"
+                                    color="text.primary"
+                                    sx={{ fontWeight: 800, mb: 2, textAlign: { xs: 'center', md: 'left' } }}
+                                >
+                                    WMS — складская система нового поколения
+                                </Typography>
+                                <Typography
+                                    variant="h5"
+                                    color="text.secondary"
+                                    sx={{ mb: 4, textAlign: { xs: 'center', md: 'left' }, maxWidth: 600 }}
+                                >
+                                    Управляйте складом, закупками и отчетностью в облаке. Просто. Надежно. Современно.
+                                </Typography>
+                                <Box display="flex" gap={2} justifyContent={{ xs: 'center', md: 'flex-start' }}>
+                                    <Button
+                                        variant="contained"
+                                        color="primary"
+                                        size="large"
+                                        onClick={() => navigate('/login')}
+                                    >
+                                        Вход
+                                    </Button>
+                                    <Button
+                                        variant="outlined"
+                                        color="primary"
+                                        size="large"
+                                        onClick={() => navigate('/register')}
+                                    >
+                                        Регистрация
+                                    </Button>
+                                </Box>
+                            </Box>
+                        </Box>
+                    </Paper>
+                </Box>
+            </Box>
             {/* Info sections */}
             <Box sx={{width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
                 {sections.map((section, idx) => (
