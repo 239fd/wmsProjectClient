@@ -1,15 +1,16 @@
 import React from 'react';
-import MainNavbar from './MainNavbar';
+import Navbar from './Navbar';
 import { Container } from '@mui/material';
 import { Outlet } from 'react-router-dom';
 
-const MainLayout = () => (
+const GuestLayout = () => (
   <>
-    <MainNavbar />
+    <Navbar />
     <Container maxWidth="lg" sx={{ mt: 4 }}>
       <Outlet />
     </Container>
   </>
 );
 
-export default MainLayout;
+export default GuestLayout;
+
