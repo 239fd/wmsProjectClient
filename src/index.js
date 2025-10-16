@@ -1,31 +1,40 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { ThemeProvider, CssBaseline } from '@mui/material';
+import {BrowserRouter, Routes, Route} from 'react-router-dom';
+import {ThemeProvider, CssBaseline} from '@mui/material';
 import theme from './config/theme';
 import HomePage from './pages/HomePage';
 import RegisterPage from './pages/RegisterPage';
 import RoleSelectPage from './pages/RoleSelectPage';
 import LoginPage from './pages/LoginPage';
+import MainPage from './pages/MainPage';
+import ProfilePage from './pages/ProfilePage';
+import SettingsPage from './pages/SettingsPage';
 import MainLayout from './components/layout/MainLayout';
+import GuestLayout from './components/layout/GuestLayout';
 import './index.css';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-  <React.StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <BrowserRouter>
-        <Routes>
-          <Route element={<MainLayout />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/role" element={<RoleSelectPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            {/* Добавьте другие страницы по мере необходимости */}
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </ThemeProvider>
-  </React.StrictMode>
+    <React.StrictMode>
+        <ThemeProvider theme={theme}>
+            <CssBaseline/>
+            <BrowserRouter>
+                <Routes>
+                    <Route element={<GuestLayout/>}>
+                        <Route path="/" element={<HomePage/>}/>
+                        <Route path="/register" element={<RegisterPage/>}/>
+                        <Route path="/role" element={<RoleSelectPage/>}/>
+                        <Route path="/login" element={<LoginPage/>}/>
+                    </Route>
+                    <Route element={<MainLayout />}>
+                        <Route path="/main" element={<MainPage />} />
+                        <Route path="/profile" element={<ProfilePage />} />
+                        <Route path="/settings" element={<SettingsPage />} />
+                        {/* Здесь можно добавить другие защищённые страницы */}
+                    </Route>
+                </Routes>
+            </BrowserRouter>
+        </ThemeProvider>
+    </React.StrictMode>
 );
