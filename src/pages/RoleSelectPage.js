@@ -20,6 +20,9 @@ const RoleSelectPage = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // Сохраняем роль и код предприятия в localStorage
+    const user = { role, companyCode };
+    localStorage.setItem('wms_user', JSON.stringify(user));
     navigate('/main');
   };
 
@@ -30,7 +33,7 @@ const RoleSelectPage = () => {
         <form onSubmit={handleSubmit} style={{ width: '100%' }}>
           <FormControl fullWidth margin="normal">
             <InputLabel id="role-label">Роль</InputLabel>
-            <Select labelId="role-label" value={role} label="Роль" onChange={handleRoleChange} required>
+            <Select labelId="role-label" value={role} label="Роль" variant="outlined" onChange={handleRoleChange} required>
               {roles.map((r) => (
                 <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>
               ))}
@@ -47,4 +50,3 @@ const RoleSelectPage = () => {
 };
 
 export default RoleSelectPage;
-

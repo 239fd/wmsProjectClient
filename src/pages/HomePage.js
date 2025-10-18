@@ -57,7 +57,7 @@ const HomePage = () => {
                                 <Typography
                                     variant="h5"
                                     color="text.secondary"
-                                    sx={{ mb: 4, textAlign: { xs: 'center', md: 'left' }, maxWidth: 600 }}
+                                    sx={{ mb: 4, textAlign: { xs: 'center', md: 'left' } }}
                                 >
                                     Управляйте складом, закупками и отчетностью в облаке. Просто. Надежно. Современно.
                                 </Typography>

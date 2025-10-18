@@ -10,6 +10,14 @@ import LoginPage from './pages/LoginPage';
 import MainPage from './pages/MainPage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
+import ReceivePage from './pages/ReceivePage';
+import ShipPage from './pages/ShipPage';
+import InventoryPage from './pages/InventoryPage';
+import RevaluationPage from './pages/RevaluationPage';
+import WriteoffPage from './pages/WriteoffPage';
+import AnalyticsPage from './pages/AnalyticsPage';
+import EmployeesPage from './pages/EmployeesPage';
+import OrganizationPage from './pages/OrganizationPage';
 import MainLayout from './components/layout/MainLayout';
 import GuestLayout from './components/layout/GuestLayout';
 import './index.css';
@@ -31,6 +39,15 @@ root.render(
                         <Route path="/main" element={<MainPage />} />
                         <Route path="/profile" element={<ProfilePage />} />
                         <Route path="/settings" element={<SettingsPage />} />
+                        {/* Роли и функциональные страницы (заглушки) */}
+                        <Route path="/receive" element={<ReceivePage />} />
+                        <Route path="/ship" element={<ShipPage />} />
+                        <Route path="/inventory" element={<InventoryPage />} />
+                        <Route path="/revaluation" element={<RevaluationPage />} />
+                        <Route path="/writeoff" element={<WriteoffPage />} />
+                        <Route path="/analytics" element={<AnalyticsPage />} />
+                        <Route path="/employees" element={<EmployeesPage />} />
+                        <Route path="/organization" element={<OrganizationPage />} />
                         {/* Здесь можно добавить другие защищённые страницы */}
                     </Route>
                 </Routes>
