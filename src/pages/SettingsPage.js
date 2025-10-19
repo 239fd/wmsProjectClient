@@ -25,9 +25,7 @@ const SettingsPage = () => {
 
   const handleTerminate = (id, isActive) => {
     if (isActive) {
-      // Завершить активную сессию = выход
       alert('Выход из аккаунта (заглушка)');
-      // Здесь можно добавить navigate('/login') или аналогичную логику
     } else {
       alert(`Сессия ${id} завершена (заглушка)`);
     }

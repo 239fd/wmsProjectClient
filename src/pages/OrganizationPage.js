@@ -75,7 +75,7 @@ const OrganizationPage = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Название</TableCell>
+                  <TableCell>Наименование</TableCell>
                   <TableCell>Адрес</TableCell>
                   <TableCell align="right">Действия</TableCell>
                 </TableRow>

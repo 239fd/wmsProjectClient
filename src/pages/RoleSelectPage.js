@@ -20,7 +20,6 @@ const RoleSelectPage = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // Сохраняем роль и код предприятия в localStorage
     const user = { role, companyCode };
     localStorage.setItem('wms_user', JSON.stringify(user));
     navigate('/main');

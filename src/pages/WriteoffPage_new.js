@@ -4,14 +4,16 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 
 const reasons = [
-  'Изменение рыночной стоимости',
-  'Решение об уценке',
-  'Решение о дооценке',
-  'Переоценка в связи с износом',
-  'Модернизация',
-  'Изменение курса валют',
-  'Инфляция',
-  'Изменение нормативных требований',
+  'Физический износ',
+  'Моральный износ',
+  'Порча',
+  'Истёк срок годности',
+  'Брак',
+  'Утеря',
+  'Хищение',
+  'Стихийное бедствие',
+  'Выявлено при инвентаризации',
+  'Недостача сверх норм естественной убыли',
 ];
 
 const units = ['шт', 'кг', 'л', 'м', 'м²', 'м³', 'упак'];
@@ -23,12 +25,12 @@ const mockProducts = [
   { label: 'Сыр твердый Гауда', sku: 'CHEESE-001' },
 ];
 
-const initialItem = { name: '', unit: 'шт', quantity: '', oldPrice: '', newPrice: '', diff: '', diffPercent: '' };
+const initialItem = { name: '', unit: 'шт', quantity: '', price: '', reason: '', notes: '' };
 
-const RevaluationPage = () => {
-  const [revaluations, setRevaluations] = useState([
-    { id: 1, actNumber: 'ПО-001', date: '2025-10-10', status: 'Утверждена', responsible: 'Иванов И.И.', diffSum: '+25000.00', reason: 'Изменение рыночной стоимости' },
-    { id: 2, actNumber: 'ПО-002', date: '2025-10-16', status: 'Утверждена', responsible: 'Петров П.П.', diffSum: '-12000.00', reason: 'Решение об уценке' },
+const WriteoffPage = () => {
+  const [writeoffs, setWriteoffs] = useState([
+    { id: 1, actNumber: 'СП-001', date: '2025-10-10', status: 'Утверждено', responsible: 'Иванов И.И.', sum: '15000.00' },
+    { id: 2, actNumber: 'СП-002', date: '2025-10-16', status: 'Утверждено', responsible: 'Петров П.П.', sum: '8500.00' },
   ]);
 
   const today = new Date().toISOString().split('T')[0];
@@ -36,7 +38,6 @@ const RevaluationPage = () => {
   const [form, setForm] = useState({
     actNumber: '',
     date: today,
-    reason: '',
     responsible: '',
     commission: '',
     basis: '',
@@ -51,27 +52,11 @@ const RevaluationPage = () => {
   const handleItemChange = (idx, e, fieldName = null, fieldValue = null) => {
     const items = form.items.map((p, i) => {
       if (i === idx) {
-        const updated = { ...p };
         if (fieldName && fieldValue !== null) {
-          updated[fieldName] = fieldValue;
+          return { ...p, [fieldName]: fieldValue };
         } else {
-          updated[e.target.name] = e.target.value;
+          return { ...p, [e.target.name]: e.target.value };
         }
-        const changedField = fieldName || e.target.name;
-        if (changedField === 'oldPrice' || changedField === 'newPrice' || changedField === 'quantity') {
-          const oldPrice = changedField === 'oldPrice' ? (fieldValue || e.target.value) : p.oldPrice;
-          const newPrice = changedField === 'newPrice' ? (fieldValue || e.target.value) : p.newPrice;
-          const quantity = changedField === 'quantity' ? (fieldValue || e.target.value) : p.quantity;
-          if (oldPrice && newPrice && quantity) {
-            const oldTotal = Number(oldPrice) * Number(quantity);
-            const newTotal = Number(newPrice) * Number(quantity);
-            updated.diff = (newTotal - oldTotal).toFixed(2);
-            if (oldTotal !== 0) {
-              updated.diffPercent = (((newTotal - oldTotal) / oldTotal) * 100).toFixed(2);
-            }
-          }
-        }
-        return updated;
       }
       return p;
     });
@@ -90,15 +75,14 @@ const RevaluationPage = () => {
     const newErrors = {};
     if (!form.actNumber) newErrors.actNumber = 'Укажите номер акта';
     if (!form.date) newErrors.date = 'Укажите дату';
-    if (!form.reason) newErrors.reason = 'Укажите причину переоценки';
     if (!form.responsible) newErrors.responsible = 'Укажите ответственного';
     if (!form.commission) newErrors.commission = 'Укажите состав комиссии';
-    if (!form.basis) newErrors.basis = 'Укажите основание для переоценки';
+    if (!form.basis) newErrors.basis = 'Укажите основание для списания';
     form.items.forEach((p, i) => {
       if (!p.name) newErrors[`item_name_${i}`] = 'Название обязательно';
       if (!p.quantity) newErrors[`item_quantity_${i}`] = 'Количество обязательно';
-      if (!p.oldPrice) newErrors[`item_oldPrice_${i}`] = 'Старая цена обязательна';
-      if (!p.newPrice) newErrors[`item_newPrice_${i}`] = 'Новая цена обязательна';
+      if (!p.price) newErrors[`item_price_${i}`] = 'Балансовая стоимость обязательна';
+      if (!p.reason) newErrors[`item_reason_${i}`] = 'Причина обязательна';
     });
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -107,23 +91,21 @@ const RevaluationPage = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!validate()) return;
-    const totalDiff = calculateTotalDiff();
-    setRevaluations([
-      ...revaluations,
+    const totalSum = calculateTotalSum();
+    setWriteoffs([
+      ...writeoffs,
       {
-        id: revaluations.length + 1,
+        id: writeoffs.length + 1,
         actNumber: form.actNumber,
         date: form.date,
-        reason: form.reason,
         responsible: form.responsible,
-        status: 'Утверждена',
-        diffSum: (totalDiff >= 0 ? '+' : '') + totalDiff.toFixed(2),
+        status: 'Утверждено',
+        sum: totalSum.toFixed(2),
       },
     ]);
     setForm({
       actNumber: '',
       date: today,
-      reason: '',
       responsible: '',
       commission: '',
       basis: '',
@@ -132,10 +114,10 @@ const RevaluationPage = () => {
     setErrors({});
   };
 
-  const calculateTotalDiff = () => {
+  const calculateTotalSum = () => {
     return form.items.reduce((sum, item) => {
-      if (item.diff) {
-        return sum + Number(item.diff);
+      if (item.quantity && item.price) {
+        return sum + (Number(item.quantity) * Number(item.price));
       }
       return sum;
     }, 0);
@@ -145,15 +127,15 @@ const RevaluationPage = () => {
     <Box sx={{ width: '100%', bgcolor: 'background.default', minHeight: '100vh', py: 4 }}>
       <Box sx={{ width: '100%', maxWidth: 1400, mx: 'auto', px: { xs: 2, md: 4 } }}>
         <Typography variant="h4" fontWeight={900} mb={3} textAlign="center">
-          Переоценка материальных ценностей
+          Списание материальных ценностей
         </Typography>
 
         <Paper sx={{ p: { xs: 2, md: 4 }, mb: 4 }}>
           <Typography variant="h6" fontWeight={700} mb={2}>
-            Новый акт переоценки
+            Новый акт списания
           </Typography>
           <Typography variant="body2" color="text.secondary" mb={3}>
-            Оформление акта переоценки в соответствии с законодательством РБ
+            Оформление акта списания в соответствии с законодательством РБ
           </Typography>
 
           <form onSubmit={handleSubmit}>
@@ -165,7 +147,7 @@ const RevaluationPage = () => {
                   value={form.actNumber}
                   onChange={handleFormChange}
                   fullWidth
-                  placeholder="ПО-001"
+                  placeholder="СП-001"
                   error={!!errors.actNumber}
                   helperText={errors.actNumber}
                   sx={{ minWidth: 200 }}
@@ -184,22 +166,6 @@ const RevaluationPage = () => {
                   helperText={errors.date}
                   sx={{ minWidth: 200 }}
                 />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  select
-                  label="Причина переоценки"
-                  name="reason"
-                  value={form.reason}
-                  onChange={handleFormChange}
-                  fullWidth
-                  error={!!errors.reason}
-                  helperText={errors.reason}
-                  sx={{ minWidth: 200 }}
-                >
-                  <MenuItem value="">Выберите...</MenuItem>
-                  {reasons.map(r => <MenuItem key={r} value={r}>{r}</MenuItem>)}
-                </TextField>
               </Grid>
               <Grid item xs={12} md={6}>
                 <TextField
@@ -227,14 +193,14 @@ const RevaluationPage = () => {
                   sx={{ minWidth: 200 }}
                 />
               </Grid>
-              <Grid item xs={12}>
+              <Grid item xs={12} md={6}>
                 <TextField
-                  label="Основание для переоценки"
+                  label="Основание для списания"
                   name="basis"
                   value={form.basis}
                   onChange={handleFormChange}
                   fullWidth
-                  placeholder="Решение комиссии №45 от 15.10.2025, заключение оценщика"
+                  placeholder="Приказ №123 от 01.10.2025"
                   error={!!errors.basis}
                   helperText={errors.basis}
                   sx={{ minWidth: 200 }}
@@ -243,7 +209,7 @@ const RevaluationPage = () => {
             </Grid>
 
             <Box mt={3}>
-              <Typography fontWeight={700} mb={1}>Позиции к переоценке</Typography>
+              <Typography fontWeight={700} mb={1}>Позиции к списанию</Typography>
               <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 500 }}>
                 <Table size="small" stickyHeader>
                   <TableHead>
@@ -251,15 +217,16 @@ const RevaluationPage = () => {
                       <TableCell sx={{ minWidth: 200 }}>Наименование</TableCell>
                       <TableCell sx={{ minWidth: 80 }}>Ед. изм.</TableCell>
                       <TableCell sx={{ minWidth: 100 }}>Количество</TableCell>
-                      <TableCell sx={{ minWidth: 120 }}>Старая цена (руб.)</TableCell>
-                      <TableCell sx={{ minWidth: 120 }}>Новая цена (руб.)</TableCell>
-                      <TableCell sx={{ minWidth: 120 }}>Изменение (руб.)</TableCell>
-                      <TableCell sx={{ minWidth: 100 }}>Изменение (%)</TableCell>
+                      <TableCell sx={{ minWidth: 120 }}>Цена (руб.)</TableCell>
+                      <TableCell sx={{ minWidth: 120 }}>Сумма (руб.)</TableCell>
+                      <TableCell sx={{ minWidth: 150 }}>Причина</TableCell>
+                      <TableCell sx={{ minWidth: 200 }}>Примечание</TableCell>
                       <TableCell sx={{ width: 50 }}></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {form.items.map((p, idx) => {
+                      const itemSum = p.quantity && p.price ? (Number(p.quantity) * Number(p.price)).toFixed(2) : '';
                       return (
                         <TableRow key={idx}>
                           <TableCell>
@@ -314,59 +281,52 @@ const RevaluationPage = () => {
                           </TableCell>
                           <TableCell>
                             <TextField
-                              name="oldPrice"
-                              value={p.oldPrice}
+                              name="price"
+                              value={p.price}
                               onChange={e => handleItemChange(idx, e)}
                               size="small"
                               type="number"
                               fullWidth
                               inputProps={{ step: "0.01", min: "0" }}
-                              error={!!errors[`item_oldPrice_${idx}`]}
-                              helperText={errors[`item_oldPrice_${idx}`]}
+                              error={!!errors[`item_price_${idx}`]}
+                              helperText={errors[`item_price_${idx}`]}
                               sx={{ minWidth: 200 }}
                             />
                           </TableCell>
                           <TableCell>
                             <TextField
-                              name="newPrice"
-                              value={p.newPrice}
+                              value={itemSum}
+                              size="small"
+                              disabled
+                              fullWidth
+                              sx={{ minWidth: 200 }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <TextField
+                              select
+                              name="reason"
+                              value={p.reason}
                               onChange={e => handleItemChange(idx, e)}
                               size="small"
-                              type="number"
                               fullWidth
-                              inputProps={{ step: "0.01", min: "0" }}
-                              error={!!errors[`item_newPrice_${idx}`]}
-                              helperText={errors[`item_newPrice_${idx}`]}
+                              error={!!errors[`item_reason_${idx}`]}
+                              helperText={errors[`item_reason_${idx}`]}
                               sx={{ minWidth: 200 }}
-                            />
+                            >
+                              <MenuItem value="">Выберите...</MenuItem>
+                              {reasons.map(r => <MenuItem key={r} value={r}>{r}</MenuItem>)}
+                            </TextField>
                           </TableCell>
                           <TableCell>
                             <TextField
-                              value={p.diff || ''}
+                              name="notes"
+                              value={p.notes}
+                              onChange={e => handleItemChange(idx, e)}
                               size="small"
-                              disabled
                               fullWidth
-                              sx={{
-                                minWidth: 200,
-                                '& .MuiInputBase-input': {
-                                  color: p.diff ? (Number(p.diff) < 0 ? 'error.main' : Number(p.diff) > 0 ? 'success.main' : 'text.primary') : 'text.primary',
-                                  fontWeight: 600
-                                }
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <TextField
-                              value={p.diffPercent ? p.diffPercent + '%' : ''}
-                              size="small"
-                              disabled
-                              fullWidth
-                              sx={{
-                                minWidth: 200,
-                                '& .MuiInputBase-input': {
-                                  color: p.diffPercent ? (Number(p.diffPercent) < 0 ? 'error.main' : Number(p.diffPercent) > 0 ? 'success.main' : 'text.primary') : 'text.primary'
-                                }
-                              }}
+                              placeholder="Дополнительная информация"
+                              sx={{ minWidth: 200 }}
                             />
                           </TableCell>
                           <TableCell>
@@ -389,12 +349,8 @@ const RevaluationPage = () => {
                   Добавить позицию
                 </Button>
                 <Box>
-                  <Typography
-                    variant="body1"
-                    fontWeight={700}
-                    color={calculateTotalDiff() < 0 ? 'error.main' : calculateTotalDiff() > 0 ? 'success.main' : 'text.primary'}
-                  >
-                    Итоговое изменение стоимости: {calculateTotalDiff() >= 0 ? '+' : ''}{calculateTotalDiff().toFixed(2)} руб.
+                  <Typography variant="body1" fontWeight={700}>
+                    Итого к списанию: {calculateTotalSum().toFixed(2)} руб.
                   </Typography>
                 </Box>
               </Box>
@@ -402,7 +358,7 @@ const RevaluationPage = () => {
 
             <Box mt={3} textAlign="right">
               <Button type="submit" variant="contained" color="primary" size="large">
-                Сохранить акт переоценки
+                Сохранить акт списания
               </Button>
             </Box>
           </form>
@@ -410,7 +366,7 @@ const RevaluationPage = () => {
 
         <Paper sx={{ p: { xs: 2, md: 4 } }}>
           <Typography variant="h6" fontWeight={700} mb={2}>
-            История актов переоценки
+            История актов списания
           </Typography>
           <TableContainer>
             <Table size="small">
@@ -418,28 +374,18 @@ const RevaluationPage = () => {
                 <TableRow>
                   <TableCell>Номер акта</TableCell>
                   <TableCell>Дата</TableCell>
-                  <TableCell>Причина</TableCell>
                   <TableCell>Ответственный</TableCell>
-                  <TableCell>Изменение (руб.)</TableCell>
+                  <TableCell>Сумма (руб.)</TableCell>
                   <TableCell>Статус</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {revaluations.map(s => (
+                {writeoffs.map(s => (
                   <TableRow key={s.id} hover sx={{ cursor: 'pointer' }}>
                     <TableCell fontWeight={600}>{s.actNumber}</TableCell>
                     <TableCell>{s.date}</TableCell>
-                    <TableCell>{s.reason}</TableCell>
                     <TableCell>{s.responsible}</TableCell>
-                    <TableCell>
-                      <Typography
-                        variant="body2"
-                        fontWeight={600}
-                        color={s.diffSum.startsWith('-') ? 'error.main' : 'success.main'}
-                      >
-                        {s.diffSum}
-                      </Typography>
-                    </TableCell>
+                    <TableCell>{s.sum}</TableCell>
                     <TableCell>
                       <Chip
                         label={s.status}
@@ -458,4 +404,4 @@ const RevaluationPage = () => {
   );
 };
 
-export default RevaluationPage;
+export default WriteoffPage;

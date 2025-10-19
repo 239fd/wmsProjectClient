@@ -32,7 +32,6 @@ const HomePage = () => {
     const navigate = useNavigate();
     return (
         <Box sx={{width: '100%', bgcolor: 'background.default', minHeight: '100vh'}}>
-            {/* Hero section */}
             <Box sx={{width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
                 <Box sx={{width: '100%', maxWidth: MAX_WIDTH, px: {xs: 2, md: 6}, my: 3}}>
                     <Paper elevation={2} sx={{ background: '#fff', borderRadius: 4, p: { xs: 3, md: 6 }, boxShadow: '0 2px 16px 0 rgba(0,0,0,0.04)', width: '100%' }}>
@@ -84,7 +83,6 @@ const HomePage = () => {
                     </Paper>
                 </Box>
             </Box>
-            {/* Info sections */}
             <Box sx={{width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
                 {sections.map((section, idx) => (
                     <Box key={idx} sx={{width: '100%', maxWidth: MAX_WIDTH, px: {xs: 2, md: 6}, my: 3}}>
