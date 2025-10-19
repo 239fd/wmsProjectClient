@@ -35,7 +35,6 @@ import {
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import RackDialog from '../components/shared/RackDialog';
 
-// Заглушка данных организации
 const mockOrganization = {
   org_id: '1',
   name: 'ООО "Торговая компания"',
@@ -45,7 +44,6 @@ const mockOrganization = {
   status: 'ACTIVE',
 };
 
-// Заглушка данных складов
 const mockWarehouses = [
   {
     warehouse_id: '1',
@@ -114,24 +112,20 @@ const OrganizationPage = () => {
   const [hasOrganization, setHasOrganization] = useState(true);
   const [warehouses, setWarehouses] = useState(mockWarehouses);
 
-  // Диалоги организации
   const [orgDialogOpen, setOrgDialogOpen] = useState(false);
   const [orgDeleteDialogOpen, setOrgDeleteDialogOpen] = useState(false);
   const [orgForm, setOrgForm] = useState(organization);
 
-  // Диалоги склада
   const [warehouseDialogOpen, setWarehouseDialogOpen] = useState(false);
   const [warehouseDeleteDialogOpen, setWarehouseDeleteDialogOpen] = useState(false);
   const [selectedWarehouse, setSelectedWarehouse] = useState(null);
   const [warehouseForm, setWarehouseForm] = useState({ name: '', address: '' });
 
-  // Диалоги стеллажей
   const [rackDialogOpen, setRackDialogOpen] = useState(false);
   const [rackDeleteDialogOpen, setRackDeleteDialogOpen] = useState(false);
   const [selectedRack, setSelectedRack] = useState(null);
   const [currentWarehouseId, setCurrentWarehouseId] = useState(null);
 
-  // Управление организацией
   const handleOrgDialogOpen = () => {
     setOrgForm(organization);
     setOrgDialogOpen(true);
@@ -154,7 +148,6 @@ const OrganizationPage = () => {
     setOrgDeleteDialogOpen(false);
   };
 
-  // Управление складами
   const handleWarehouseDialogOpen = (warehouse = null) => {
     if (warehouse) {
       setSelectedWarehouse(warehouse);
@@ -197,7 +190,6 @@ const OrganizationPage = () => {
     setSelectedWarehouse(null);
   };
 
-  // Управление стеллажами
   const handleRackDialogOpen = (warehouseId, rack = null) => {
     setCurrentWarehouseId(warehouseId);
     setSelectedRack(rack);

@@ -32,7 +32,6 @@ import {
 } from '@mui/icons-material';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 
-// Заглушка данных сотрудников
 const mockEmployees = [
   {
     user_id: '1',
@@ -86,7 +85,6 @@ const mockEmployees = [
   },
 ];
 
-// Заглушка данных складов
 const mockWarehouses = [
   { warehouse_id: '1', name: 'Склад 1', address: 'ул. Складская, 10' },
   { warehouse_id: '2', name: 'Склад 2', address: 'ул. Промышленная, 5' },
@@ -117,7 +115,6 @@ const EmployeesPage = () => {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [selectedWarehouse, setSelectedWarehouse] = useState('');
 
-  // Фильтрация сотрудников
   const filteredEmployees = employees.filter((emp) => {
     const matchesSearch =
       emp.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -135,7 +132,6 @@ const EmployeesPage = () => {
     return matchesSearch && matchesRole && matchesStatus;
   });
 
-  // Увольнение сотрудника
   const handleDismissOpen = (employee) => {
     setSelectedEmployee(employee);
     setDismissDialogOpen(true);
@@ -153,7 +149,6 @@ const EmployeesPage = () => {
     setSelectedEmployee(null);
   };
 
-  // Назначение ответственным за склад
   const handleAssignOpen = (employee) => {
     setSelectedEmployee(employee);
     setSelectedWarehouse(employee.warehouse_id || '');
@@ -163,7 +158,6 @@ const EmployeesPage = () => {
   const handleAssignConfirm = () => {
     if (!selectedWarehouse) return;
 
-    // Проверяем, что сотрудник работает на выбранном складе
     if (selectedEmployee.warehouse_id && selectedEmployee.warehouse_id !== selectedWarehouse) {
       alert('Ошибка: Сотрудник не может быть ответственным за склад, на котором он не работает!');
       return;
@@ -171,11 +165,9 @@ const EmployeesPage = () => {
 
     setEmployees(
       employees.map((emp) => {
-        // Снимаем ответственность со всех на выбранном складе
         if (emp.warehouse_id === selectedWarehouse && emp.is_responsible) {
           return { ...emp, is_responsible: false };
         }
-        // Назначаем нового ответственного (только если он работает на этом складе)
         if (emp.user_id === selectedEmployee.user_id) {
           const warehouse = warehouses.find((w) => w.warehouse_id === selectedWarehouse);
           return {
@@ -201,7 +193,6 @@ const EmployeesPage = () => {
           Сотрудники
         </Typography>
 
-        {/* Фильтры и поиск */}
         <Paper sx={{ p: 3, mb: 3, borderRadius: 3 }}>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
             <TextField
@@ -252,7 +243,6 @@ const EmployeesPage = () => {
           </Box>
         </Paper>
 
-        {/* Таблица сотрудников */}
         <TableContainer component={Paper} sx={{ borderRadius: 3 }}>
           <Table>
             <TableHead>
@@ -341,7 +331,6 @@ const EmployeesPage = () => {
           </Table>
         </TableContainer>
 
-        {/* Диалог увольнения */}
         <ConfirmDialog
           open={dismissDialogOpen}
           onClose={() => setDismissDialogOpen(false)}
@@ -350,7 +339,6 @@ const EmployeesPage = () => {
           message={`Вы уверены, что хотите уволить ${selectedEmployee?.full_name}?`}
         />
 
-        {/* Диалог назначения ответственным */}
         <Dialog
           open={assignDialogOpen}
           onClose={() => setAssignDialogOpen(false)}
@@ -377,7 +365,6 @@ const EmployeesPage = () => {
                   variant="outlined"
                 >
                   {warehouses.map((wh) => {
-                    // Показываем только склад, на котором сотрудник работает, или все склады если он не привязан
                     const isDisabled = selectedEmployee?.warehouse_id && selectedEmployee.warehouse_id !== wh.warehouse_id;
                     return (
                       <MenuItem

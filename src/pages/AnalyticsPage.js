@@ -33,7 +33,6 @@ import {
   Timer as TimerIcon
 } from '@mui/icons-material';
 
-// Заглушка данных для KPI
 const mockKpiData = [
   { label: 'Всего товаров', value: '2 847', icon: InventoryIcon, color: '#1976d2', trend: '+12%' },
   { label: 'Активных позиций', value: '1 245', icon: TrendingUpIcon, color: '#2e7d32', trend: '+8%' },
@@ -41,14 +40,12 @@ const mockKpiData = [
   { label: 'Свободных мест', value: '1 542', icon: InventoryIcon, color: '#9c27b0', trend: '-5%' },
 ];
 
-// Заглушка данных для оборачиваемости складов
 const mockWarehouseTurnover = [
   { name: 'Склад 1', operations: 1245, utilization: 78, efficiency: 92 },
   { name: 'Склад 2', operations: 987, utilization: 65, efficiency: 88 },
   { name: 'Склад 3', operations: 1422, utilization: 85, efficiency: 95 },
 ];
 
-// Заглушка данных для операций по типам
 const mockOperationsByType = [
   { type: 'Приемка', count: 1245, percentage: 34, color: '#2e7d32' },
   { type: 'Отгрузка', count: 1520, percentage: 42, color: '#1976d2' },
@@ -56,7 +53,6 @@ const mockOperationsByType = [
   { type: 'Списание', count: 433, percentage: 12, color: '#d32f2f' },
 ];
 
-// Заглушка данных для операций по складам
 const mockWarehouseOperations = {
   week: [
     { warehouse: 'Склад 1', period1: 45, period2: 52, period3: 48, period4: 50, period5: 55, period6: 42, period7: 38 },
@@ -87,7 +83,6 @@ const periodLabels = {
   year: ['Кв. 1', 'Кв. 2', 'Кв. 3', 'Кв. 4'],
 };
 
-// Заглушка данных для производительности сотрудников
 const mockEmployeePerformance = [
   { name: 'Иванов И.', operations: 345, avgTime: 12, efficiency: 95 },
   { name: 'Петров П.', operations: 320, avgTime: 13, efficiency: 92 },
@@ -95,7 +90,6 @@ const mockEmployeePerformance = [
   { name: 'Козлов А.', operations: 285, avgTime: 15, efficiency: 85 },
 ];
 
-// Заглушка для выполнения заказов
 const mockOrderFulfillment = {
   onTime: 92,
   delayed: 5,
@@ -104,7 +98,6 @@ const mockOrderFulfillment = {
   target: 24,
 };
 
-// Заглушка для графика загруженности по дням
 const mockDailyOperations = [
   { day: 'Пн', operations: 520 },
   { day: 'Вт', operations: 680 },
