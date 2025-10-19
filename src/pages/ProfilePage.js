@@ -6,7 +6,7 @@ const initialUser = {
   surname: 'Иванов',
   patronymic: 'Иванович',
   email: 'ivanov@example.com',
-  avatar: '', // путь к аватару или base64
+  avatar: '',
 };
 
 const ProfilePage = () => {
@@ -75,4 +75,3 @@ const ProfilePage = () => {
 };
 
 export default ProfilePage;
-

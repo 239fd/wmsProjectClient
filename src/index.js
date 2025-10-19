@@ -39,7 +39,6 @@ root.render(
                         <Route path="/main" element={<MainPage />} />
                         <Route path="/profile" element={<ProfilePage />} />
                         <Route path="/settings" element={<SettingsPage />} />
-                        {/* Роли и функциональные страницы (заглушки) */}
                         <Route path="/receive" element={<ReceivePage />} />
                         <Route path="/ship" element={<ShipPage />} />
                         <Route path="/inventory" element={<InventoryPage />} />
@@ -48,7 +47,6 @@ root.render(
                         <Route path="/analytics" element={<AnalyticsPage />} />
                         <Route path="/employees" element={<EmployeesPage />} />
                         <Route path="/organization" element={<OrganizationPage />} />
-                        {/* Здесь можно добавить другие защищённые страницы */}
                     </Route>
                 </Routes>
             </BrowserRouter>

@@ -43,7 +43,6 @@ const AnalyticsPage = () => {
         <Paper sx={{ p: 4, borderRadius: 3, minHeight: 320 }}>
           <Typography variant="h6" fontWeight={600} mb={2}>Динамика операций (макет графика)</Typography>
           <Box sx={{ width: '100%', height: 220, bgcolor: '#e3eaf2', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#90a4ae' }}>
-            {/* Здесь будет график (заглушка) */}
             <Typography>График появится после интеграции с сервером</Typography>
           </Box>
         </Paper>
