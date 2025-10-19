@@ -54,14 +54,18 @@ const MainNavbar = () => {
         }
     })();
 
-    const [role, setRole] = useState(() => storedUser?.role || localStorage.getItem('wms_role') || 'Работник');
+    const [role, setRole] = useState(() => {
+        if (storedUser?.role) {
+            return storedUser.role;
+        }
+        return localStorage.getItem('wms_role') || 'Работник';
+    });
+
     const isRoleEditable = !storedUser;
 
     useEffect(() => {
         if (!storedUser) {
             localStorage.setItem('wms_role', role);
-        } else {
-            localStorage.setItem('wms_role', storedUser.role);
         }
     }, [role, storedUser]);
 
@@ -78,6 +82,8 @@ const MainNavbar = () => {
     };
     const handleLogout = () => {
         handleClose();
+        localStorage.removeItem('wms_user');
+        localStorage.removeItem('wms_role');
         navigate('/');
     };
 
@@ -199,38 +205,22 @@ const MainNavbar = () => {
                                 </Select>
                             </FormControl>
                         ) : (
-                            <Typography variant="subtitle1" sx={{fontWeight: 700}}>{role}</Typography>
+                            <Box sx={{px: 2, py: 1, borderRadius: 1, bgcolor: 'action.hover', mb: 2}}>
+                                <Typography variant="body2" sx={{fontWeight: 700}}>{role}</Typography>
+                            </Box>
                         )}
                     </Box>
                     <Divider/>
                     <List>
                         {navItems.map((item) => (
-                            <ListItemButton key={item.key} selected={location.pathname === item.path}
-                                            onClick={() => handleMobileNavigate(item.path)}>
+                            <ListItemButton
+                                key={item.key}
+                                selected={location.pathname === item.path}
+                                onClick={() => handleMobileNavigate(item.path)}
+                            >
                                 <ListItemText primary={item.label}/>
                             </ListItemButton>
                         ))}
-                    </List>
-                    <Divider/>
-                    <List>
-                        <ListItemButton onClick={() => {
-                            setMobileOpen(false);
-                            navigate('/profile');
-                        }}>
-                            <ListItemText primary="Личный кабинет"/>
-                        </ListItemButton>
-                        <ListItemButton onClick={() => {
-                            setMobileOpen(false);
-                            navigate('/settings');
-                        }}>
-                            <ListItemText primary="Настройки"/>
-                        </ListItemButton>
-                        <ListItemButton onClick={() => {
-                            setMobileOpen(false);
-                            navigate('/');
-                        }}>
-                            <ListItemText primary="Выйти" sx={{color: 'error.main'}}/>
-                        </ListItemButton>
                     </List>
                 </Box>
             </Drawer>

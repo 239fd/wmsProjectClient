@@ -8,6 +8,12 @@ const roles = [
   { value: 'DIRECTOR', label: 'Директор' },
 ];
 
+const roleMapping = {
+  'WORKER': 'Работник',
+  'ACCOUNTANT': 'Бухгалтер',
+  'DIRECTOR': 'Директор',
+};
+
 const RoleSelectPage = () => {
   const [role, setRole] = useState('');
   const [companyCode, setCompanyCode] = useState('');
@@ -20,7 +26,11 @@ const RoleSelectPage = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const user = { role, companyCode };
+    const user = {
+      role: roleMapping[role],
+      roleCode: role,
+      companyCode
+    };
     localStorage.setItem('wms_user', JSON.stringify(user));
     navigate('/main');
   };
