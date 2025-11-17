@@ -1,7 +1,6 @@
 version: "3.8"
 
 services:
-  # Базы данных
   postgres-sso:
     image: postgres:15
     container_name: postgres-sso
@@ -132,7 +131,6 @@ services:
     container_name: sso-service
     restart: unless-stopped
     environment:
-      SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-sso:5432/sso_service_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
@@ -156,7 +154,6 @@ services:
     container_name: organization-service
     restart: unless-stopped
     environment:
-      SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-org:5432/organization_service_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
@@ -176,7 +173,6 @@ services:
     container_name: product-service
     restart: unless-stopped
     environment:
-      SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-product:5432/product_service_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
@@ -196,7 +192,6 @@ services:
     container_name: warehouse-service
     restart: unless-stopped
     environment:
-      SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-warehouse:5432/warehouse_service_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres

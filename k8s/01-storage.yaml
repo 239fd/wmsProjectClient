@@ -14,10 +14,10 @@ spec:
     required:
       nodeSelectorTerms:
       - matchExpressions:
-        - key: node-role
+        - key: node-role.storage
           operator: In
           values:
-          - storage
+          - "true"
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -35,10 +35,10 @@ spec:
     required:
       nodeSelectorTerms:
       - matchExpressions:
-        - key: node-role
+        - key: node-role.storage
           operator: In
           values:
-          - storage
+          - "true"
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -56,10 +56,10 @@ spec:
     required:
       nodeSelectorTerms:
       - matchExpressions:
-        - key: node-role
+        - key: node-role.storage
           operator: In
           values:
-          - storage
+          - "true"
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -77,10 +77,10 @@ spec:
     required:
       nodeSelectorTerms:
       - matchExpressions:
-        - key: node-role
+        - key: node-role.storage
           operator: In
           values:
-          - storage
+          - "true"
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -98,8 +98,8 @@ spec:
     required:
       nodeSelectorTerms:
       - matchExpressions:
-        - key: node-role
+        - key: node-role.storage
           operator: In
           values:
-          - storage
+          - "true"
 

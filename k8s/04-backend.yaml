@@ -15,7 +15,7 @@ spec:
         tier: backend
     spec:
       nodeSelector:
-        node-role: backend
+        node-role.backend: "true"
       containers:
       - name: eureka-server
         image: eureka-server:latest
@@ -60,7 +60,7 @@ spec:
         tier: backend
     spec:
       nodeSelector:
-        node-role: backend
+        node-role.backend: "true"
       containers:
       - name: api-gateway
         image: api-gateway:latest
@@ -109,7 +109,7 @@ spec:
         tier: backend
     spec:
       nodeSelector:
-        node-role: backend
+        node-role.backend: "true"
       containers:
       - name: organization-service
         image: organization-service:latest
@@ -169,7 +169,7 @@ spec:
         app: product-service
     spec:
       nodeSelector:
-        node-role: backend
+        node-role.backend: "true"
       containers:
       - name: product-service
         image: product-service:latest
@@ -229,7 +229,7 @@ spec:
         tier: backend
     spec:
       nodeSelector:
-        node-role: backend
+        node-role.backend: "true"
       containers:
       - name: warehouse-service
         image: warehouse-service:latest
@@ -289,7 +289,7 @@ spec:
         tier: backend
     spec:
       nodeSelector:
-        node-role: backend
+        node-role.backend: "true"
       containers:
       - name: document-service
         image: document-service:latest
@@ -337,7 +337,7 @@ spec:
         tier: backend
     spec:
       nodeSelector:
-        node-role: backend
+        node-role.backend: "true"
       containers:
       - name: sso-service
         image: sso-service:latest
@@ -359,11 +359,6 @@ spec:
               key: sso-db-password
         - name: SPRING_REDIS_HOST
           value: "redis"
-        - name: SPRING_REDIS_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: redis-secret
-              key: redis-password
         - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
           value: "http://eureka-server:8761/eureka"
         resources:

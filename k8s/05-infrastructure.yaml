@@ -44,7 +44,7 @@ spec:
         app: prometheus
     spec:
       nodeSelector:
-        node-role: infrastructure
+        node-role.infrastructure: "true"
       containers:
       - name: prometheus
         image: prom/prometheus:latest
@@ -98,7 +98,7 @@ spec:
         app: grafana
     spec:
       nodeSelector:
-        node-role: infrastructure
+        node-role.infrastructure: "true"
       containers:
       - name: grafana
         image: grafana/grafana:latest
@@ -150,7 +150,7 @@ spec:
         app: loki
     spec:
       nodeSelector:
-        node-role: infrastructure
+        node-role.infrastructure: "true"
       containers:
       - name: loki
         image: grafana/loki:latest
@@ -202,7 +202,7 @@ spec:
         tier: infrastructure
     spec:
       nodeSelector:
-        node-role: infrastructure
+        node-role.infrastructure: "true"
       containers:
       - name: rabbitmq
         image: rabbitmq:3-management-alpine
