@@ -137,29 +137,66 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "   ➜ Запуск баз данных..." -ForegroundColor White
 kubectl apply -f k8s/03-databases.yaml --validate=false
 
-Write-Host "   ➜ Запуск инфраструктуры..." -ForegroundColor White
-kubectl apply -f k8s/05-infrastructure.yaml --validate=false 2>$null
+Write-Host "   ➜ Запуск инфраструктуры (Redis, Prometheus, Grafana)..." -ForegroundColor White
+kubectl apply -f "$manifestsDir\05-infrastructure.yaml" 2>$null
 
 Write-Host "⏳ Ожидание запуска баз данных и инфраструктуры (60 секунд)..." -ForegroundColor Yellow
 Start-Sleep -Seconds 60
 
+# Сборка Docker образов
+Write-Host ""
+Write-Host "🏗️  Сборка Docker образов..." -ForegroundColor Cyan
+Write-Host "   (используется Docker окружение Minikube)" -ForegroundColor Gray
+Write-Host ""
+
+# Backend сервисы
+Write-Host "   📦 Сборка Eureka Server..." -ForegroundColor White
+docker build -t eureka-server:latest ./backend/eureka-server
+
+Write-Host "   📦 Сборка API Gateway..." -ForegroundColor White
+docker build -t api-gateway:latest ./backend/api-gateway
+
+Write-Host "   📦 Сборка SSO Service..." -ForegroundColor White
+docker build -t sso-service:latest ./backend/SSOService
+
+Write-Host "   📦 Сборка Organization Service..." -ForegroundColor White
+docker build -t organization-service:latest ./backend/organization-service
+
+Write-Host "   📦 Сборка Product Service..." -ForegroundColor White
+docker build -t product-service:latest ./backend/product-service
+
+Write-Host "   📦 Сборка Warehouse Service..." -ForegroundColor White
+docker build -t warehouse-service:latest ./backend/warehouse-service
+
+Write-Host "   📦 Сборка Document Service..." -ForegroundColor White
+docker build -t document-service:latest ./backend/document-service
+
+# Frontend
+Write-Host "   📦 Сборка Frontend..." -ForegroundColor White
+docker build -t wms-frontend:latest ./client
+
+Write-Host ""
+Write-Host "✅ Все образы собраны" -ForegroundColor Green
+Write-Host ""
+
+Write-Host "📋 Применение backend сервисов..." -ForegroundColor Cyan
 Write-Host "   ➜ Запуск backend сервисов..." -ForegroundColor White
-kubectl apply -f k8s/04-backend.yaml --validate=false
+kubectl apply -f "$manifestsDir\04-backend.yaml"
 
 Write-Host "⏳ Ожидание запуска backend сервисов (40 секунд)..." -ForegroundColor Yellow
 Start-Sleep -Seconds 40
 
 Write-Host "   ➜ Запуск frontend..." -ForegroundColor White
-kubectl apply -f k8s/09-frontend.yaml --validate=false
+kubectl apply -f "$manifestsDir\09-frontend.yaml"
 
 Write-Host "   ➜ Настройка ingress..." -ForegroundColor White
-kubectl apply -f k8s/06-ingress.yaml --validate=false 2>$null
+kubectl apply -f "$manifestsDir\06-ingress.yaml" 2>$null
 
 Write-Host "   ➜ Настройка autoscaling..." -ForegroundColor White
-kubectl apply -f k8s/07-autoscaling.yaml --validate=false 2>$null
+kubectl apply -f "$manifestsDir\07-autoscaling.yaml" 2>$null
 
 Write-Host "   ➜ Настройка network policies..." -ForegroundColor White
-kubectl apply -f k8s/08-network-policies.yaml --validate=false 2>$null
+kubectl apply -f "$manifestsDir\08-network-policies.yaml" 2>$null
 
 Write-Host ""
 Write-Host "⏳ Ожидание готовности всех подов (30 секунд)..." -ForegroundColor Yellow
