@@ -15,7 +15,7 @@ spec:
         tier: frontend
     spec:
       nodeSelector:
-        node-role: frontend
+        node-role.frontend: "true"
       containers:
       - name: frontend
         image: wms-frontend:latest

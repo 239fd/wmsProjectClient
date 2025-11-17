@@ -16,7 +16,7 @@ spec:
         tier: database
     spec:
       nodeSelector:
-        node-role: storage
+        node-role.storage: "true"
       containers:
       - name: postgres
         image: postgres:16-alpine
@@ -86,7 +86,7 @@ spec:
         tier: database
     spec:
       nodeSelector:
-        node-role: storage
+        node-role.storage: "true"
       containers:
       - name: postgres
         image: postgres:16-alpine
@@ -156,7 +156,7 @@ spec:
         tier: database
     spec:
       nodeSelector:
-        node-role: storage
+        node-role.storage: "true"
       containers:
       - name: postgres
         image: postgres:16-alpine
@@ -226,7 +226,7 @@ spec:
         tier: database
     spec:
       nodeSelector:
-        node-role: storage
+        node-role.storage: "true"
       containers:
       - name: postgres
         image: postgres:16-alpine
@@ -295,7 +295,7 @@ spec:
         app: redis
     spec:
       nodeSelector:
-        node-role: storage
+        node-role.storage: "true"
       containers:
       - name: redis
         image: redis:7-alpine
@@ -303,14 +303,8 @@ spec:
         - containerPort: 6379
         command:
         - redis-server
-        - --requirepass
-        - $(REDIS_PASSWORD)
-        env:
-        - name: REDIS_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: redis-secret
-              key: redis-password
+        - --appendonly
+        - "yes"
         volumeMounts:
         - name: redis-storage
           mountPath: /data
