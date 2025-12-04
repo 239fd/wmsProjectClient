@@ -21,53 +21,53 @@ import {
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import {useNavigate, useLocation} from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { logout, selectUser } from '../../store/slices/authSlice';
 
 const roleNav = {
     Работник: [
-        {key: 'receive', label: 'Прием товара', path: '/receive'},
-        {key: 'ship', label: 'Отгрузка', path: '/ship'},
+        {key: 'receive', label: 'Прием товара', path: '/main/receive'},
+        {key: 'ship', label: 'Отгрузка', path: '/main/ship'},
     ],
     Бухгалтер: [
-        {key: 'inventory', label: 'Инвентаризация', path: '/inventory'},
-        {key: 'revaluation', label: 'Переоценка', path: '/revaluation'},
-        {key: 'writeoff', label: 'Списание', path: '/writeoff'},
+        {key: 'inventory', label: 'Инвентаризация', path: '/main/inventory'},
+        {key: 'revaluation', label: 'Переоценка', path: '/main/revaluation'},
+        {key: 'writeoff', label: 'Списание', path: '/main/writeoff'},
     ],
     Директор: [
-        {key: 'analytics', label: 'Аналитика', path: '/analytics'},
-        {key: 'employees', label: 'Сотрудники', path: '/employees'},
-        {key: 'organization', label: 'Организация', path: '/organization'},
+        {key: 'analytics', label: 'Аналитика', path: '/main/analytics'},
+        {key: 'employees', label: 'Сотрудники', path: '/main/employees'},
+        {key: 'organization', label: 'Организация', path: '/main/organization'},
     ],
 };
 
 const MainNavbar = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const dispatch = useDispatch();
+    const user = useSelector(selectUser);
     const [anchorEl, setAnchorEl] = useState(null);
     const [mobileOpen, setMobileOpen] = useState(false);
 
-    const storedUser = (() => {
-        try {
-            const raw = localStorage.getItem('wms_user');
-            return raw ? JSON.parse(raw) : null;
-        } catch (e) {
-            return null;
-        }
-    })();
-
     const [role, setRole] = useState(() => {
-        if (storedUser?.role) {
-            return storedUser.role;
+        if (user?.roles && user.roles.length > 0) {
+            const roleMap = {
+                'WORKER': 'Работник',
+                'ACCOUNTANT': 'Бухгалтер',
+                'DIRECTOR': 'Директор',
+            };
+            return roleMap[user.roles[0]] || 'Работник';
         }
         return localStorage.getItem('wms_role') || 'Работник';
     });
 
-    const isRoleEditable = !storedUser;
+    const isRoleEditable = !user?.roles || user.roles.length === 0;
 
     useEffect(() => {
-        if (!storedUser) {
+        if (!user) {
             localStorage.setItem('wms_role', role);
         }
-    }, [role, storedUser]);
+    }, [role, user]);
 
     const handleSettingsClick = (event) => {
         setAnchorEl(event.currentTarget);
@@ -78,12 +78,11 @@ const MainNavbar = () => {
 
     const handleSettings = () => {
         handleClose();
-        navigate('/settings');
+        navigate('/main/settings');
     };
     const handleLogout = () => {
         handleClose();
-        localStorage.removeItem('wms_user');
-        localStorage.removeItem('wms_role');
+        dispatch(logout());
         navigate('/');
     };
 
@@ -161,7 +160,7 @@ const MainNavbar = () => {
                     </Box>
                     <Box display="flex" alignItems="center" gap={2}>
                         <Tooltip title="Личный кабинет">
-                            <IconButton onClick={() => navigate('/profile')}>
+                            <IconButton onClick={() => navigate('/main/profile')}>
                                 <Avatar sx={{
                                     width: 32,
                                     height: 32,
