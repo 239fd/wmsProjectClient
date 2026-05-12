@@ -1,48 +1,47 @@
-// Document Service - сервис генерации документов
+
 import httpService from './httpService';
 import { API_ENDPOINTS } from '../config/api';
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8765';
+
 const documentService = {
-  async generateReceiptOrder(data, filename = 'receipt-order.xls') {
-    // data: ReceiptOrderData
-    return httpService.downloadFile(
-      `${API_ENDPOINTS.DOCUMENTS.RECEIPT_ORDER}?${new URLSearchParams(data)}`,
-      filename
-    );
+
+  async list({ page = 0, size = 20 } = {}) {
+    return httpService.get(`${API_ENDPOINTS.DOCUMENTS.LIST}?page=${page}&size=${size}`);
   },
 
-  async generateShippingInvoice(data, filename = 'shipping-invoice.xls') {
-    // data: ShippingInvoiceData
-    return httpService.downloadFile(
-      `${API_ENDPOINTS.DOCUMENTS.SHIPPING_INVOICE}?${new URLSearchParams(data)}`,
-      filename
-    );
+  async getMetadata(id) {
+    return httpService.get(API_ENDPOINTS.DOCUMENTS.METADATA(id));
   },
 
-  async generateInventoryList(data, filename = 'inventory-list.xls') {
-    // data: InventoryListData
-    return httpService.downloadFile(
-      `${API_ENDPOINTS.DOCUMENTS.INVENTORY_LIST}?${new URLSearchParams(data)}`,
-      filename
-    );
+  getDownloadUrl(id) {
+    return `${API_BASE_URL}${API_ENDPOINTS.DOCUMENTS.BY_ID(id).replace(API_BASE_URL, '')}`;
   },
 
-  async generateWriteOffAct(data, filename = 'writeoff-act.docx') {
-    // data: WriteOffActData
-    return httpService.downloadFile(
-      `${API_ENDPOINTS.DOCUMENTS.WRITEOFF_ACT}?${new URLSearchParams(data)}`,
-      filename
-    );
+  async download(id, filename = 'document.pdf') {
+    const token = localStorage.getItem('accessToken');
+    const url = `${API_BASE_URL}${API_ENDPOINTS.DOCUMENTS.BY_ID(id).replace(API_BASE_URL, '')}`;
+    const response = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      throw new Error(`Не удалось скачать документ: HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
   },
 
-  async generateRevaluationAct(data, filename = 'revaluation-act.xls') {
-    // data: RevaluationActData
-    return httpService.downloadFile(
-      `${API_ENDPOINTS.DOCUMENTS.REVALUATION_ACT}?${new URLSearchParams(data)}`,
-      filename
-    );
+  async generate(type, data, format = 'pdf') {
+    const url = `${API_ENDPOINTS.DOCUMENTS.GENERATE(type)}?format=${encodeURIComponent(format)}`;
+    return httpService.post(url, data);
   },
 };
 
 export default documentService;
-

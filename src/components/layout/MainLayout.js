@@ -1,14 +1,19 @@
 import React from 'react';
 import MainNavbar from './MainNavbar';
-import { Container } from '@mui/material';
+import { Box } from '@mui/material';
 import { Outlet } from 'react-router-dom';
+import ErrorBoundary from '../shared/ErrorBoundary';
+import PageBreadcrumbs from '../shared/PageBreadcrumbs';
 
 const MainLayout = () => (
   <>
     <MainNavbar />
-    <Container maxWidth="lg" sx={{ mt: 4 }}>
-      <Outlet />
-    </Container>
+    <PageBreadcrumbs />
+    <Box component="main" sx={{ width: '100%' }}>
+      <ErrorBoundary>
+        <Outlet />
+      </ErrorBoundary>
+    </Box>
   </>
 );
 

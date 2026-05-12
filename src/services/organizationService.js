@@ -1,52 +1,46 @@
-// Organization Service - сервис работы с организациями
+
 import httpService from './httpService';
 import { API_ENDPOINTS } from '../config/api';
 
 const organizationService = {
-  async getMyOrganization() {
-    return httpService.get(API_ENDPOINTS.ORGANIZATIONS.MY);
+
+  async getById(orgId) {
+    return httpService.get(API_ENDPOINTS.ORGANIZATIONS.BY_ID(orgId));
   },
 
-  async createOrganization(orgData) {
-    // orgData: { name, inn, address, directorName }
+  async create(orgData) {
+
     return httpService.post(API_ENDPOINTS.ORGANIZATIONS.BASE, orgData);
   },
 
-  async updateOrganization(orgId, orgData) {
-    return httpService.put(`${API_ENDPOINTS.ORGANIZATIONS.BASE}/${orgId}`, orgData);
+  async update(orgId, orgData) {
+    return httpService.put(API_ENDPOINTS.ORGANIZATIONS.BY_ID(orgId), orgData);
   },
 
-  async joinOrganization(invitationCode) {
-    return httpService.post(API_ENDPOINTS.ORGANIZATIONS.JOIN, { invitationCode });
+  async delete(orgId) {
+    return httpService.delete(API_ENDPOINTS.ORGANIZATIONS.BY_ID(orgId));
   },
 
-  async getEmployees(orgId) {
-    return httpService.get(API_ENDPOINTS.ORGANIZATIONS.EMPLOYEES(orgId));
+  async getEmployees(orgId, { page = 0, size = 50 } = {}) {
+    return httpService.get(`${API_ENDPOINTS.ORGANIZATIONS.EMPLOYEES(orgId)}?page=${page}&size=${size}`);
   },
 
-  async addEmployee(orgId, employeeData) {
-    return httpService.post(API_ENDPOINTS.ORGANIZATIONS.EMPLOYEES(orgId), employeeData);
+  async deleteEmployee(orgId, userId) {
+    return httpService.delete(API_ENDPOINTS.ORGANIZATIONS.EMPLOYEE_BY_ID(orgId, userId));
   },
 
-  async removeEmployee(orgId, employeeId) {
-    return httpService.delete(`${API_ENDPOINTS.ORGANIZATIONS.EMPLOYEES(orgId)}/${employeeId}`);
+  async setEmployeeBlocked(orgId, userId, blocked) {
+    return httpService.patch(API_ENDPOINTS.ORGANIZATIONS.EMPLOYEE_STATUS(orgId, userId), { blocked });
   },
 
-  async updateEmployeeRole(orgId, employeeId, role) {
-    return httpService.put(
-      `${API_ENDPOINTS.ORGANIZATIONS.EMPLOYEES(orgId)}/${employeeId}/role`,
-      { role }
-    );
+  async createInvitation(orgId, payload) {
+
+    return httpService.post(API_ENDPOINTS.ORGANIZATIONS.INVITATIONS(orgId), payload);
   },
 
-  async getInvitationCode(orgId) {
-    return httpService.get(API_ENDPOINTS.ORGANIZATIONS.INVITATION_CODE(orgId));
-  },
-
-  async regenerateInvitationCode(orgId) {
-    return httpService.post(API_ENDPOINTS.ORGANIZATIONS.INVITATION_CODE(orgId), {});
+  async listInvitations(orgId) {
+    return httpService.get(API_ENDPOINTS.ORGANIZATIONS.INVITATIONS(orgId));
   },
 };
 
 export default organizationService;
-

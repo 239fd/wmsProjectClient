@@ -1,533 +1,520 @@
-import React, { useState } from 'react';
-import { Box, Typography, Paper, Button, TextField, Grid, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, MenuItem, Chip, Dialog, DialogTitle, DialogContent, DialogActions, Alert, Autocomplete } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import StopIcon from '@mui/icons-material/Stop';
-import EditIcon from '@mui/icons-material/Edit';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Box, Typography, Paper, Stack, Button, TextField, Grid,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  CircularProgress, Alert, Chip, Divider, MenuItem, Select,
+  InputLabel, FormControl, Autocomplete, FormHelperText,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip,
+} from '@mui/material';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import {
+  PlayArrow as PlayArrowIcon,
+  StopCircle as StopIcon,
+  Cancel as CancelIcon,
+  AddCircle as AddCircleIcon,
+} from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import { useForm, Controller } from 'react-hook-form';
+import { yupResolver } from '@hookform/resolvers/yup';
+import { selectUser } from '../store/slices/authSlice';
+import productService from '../services/productService';
+import { useWarehouses } from '../hooks';
+import { useSnackbar } from '../context/SnackbarContext';
+import EmptyState from '../components/shared/EmptyState';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
+import { inventoryStartSchema, inventoryRecordSchema } from '../validation/schemas';
 
-const initialItem = {
-  sku: '',
-  productName: '',
-  batchNumber: '',
-  unit: 'шт',
-  countedQuantity: '',
+const STATUS_LABEL = {
+  ACTIVE: { label: 'Активна', color: 'success' },
+  COMPLETED: { label: 'Завершена', color: 'default' },
+  CANCELLED: { label: 'Отменена', color: 'default' },
+  CANCELED: { label: 'Отменена', color: 'default' },
 };
 
-const reasons = [
-  'Плановая инвентаризация',
-  'Смена материально ответственного лица',
-  'Перед составлением годовой отчетности',
-  'При установлении фактов хищения',
-  'После стихийных бедствий',
-];
-
-const units = ['шт', 'кг', 'л', 'м', 'м²', 'м³', 'упак'];
-
-const warehouses = ['Склад №1', 'Склад №2', 'Холодильная камера'];
-
-const mockProducts = [
-  { label: 'Молоко пастеризованное 3,2%', sku: 'MILK-001' },
-  { label: 'Хлеб белый формовой', sku: 'BREAD-001' },
-  { label: 'Масло сливочное 82,5%', sku: 'BUTTER-001' },
-  { label: 'Сыр твердый Гауда', sku: 'CHEESE-001' },
-];
-
-const mockBatches = [
-  { label: 'Партия №12345', batchNumber: 'BTH-12345' },
-  { label: 'Партия №12346', batchNumber: 'BTH-12346' },
-  { label: 'Партия №12347', batchNumber: 'BTH-12347' },
-];
+const ACTIVE_SESSION_KEY = (userId) => `wms_inventory_active_${userId}`;
+const EMPTY_RECORD = { productId: '', cellId: '', actualQuantity: '', notes: '' };
 
 const InventoryPage = () => {
-  const [sessions, setSessions] = useState([
-    {
-      id: 1,
-      sessionNumber: 'ИНВ-001',
-      startedAt: '2025-01-10 09:00',
-      endedAt: '2025-01-10 15:30',
-      status: 'COMPLETED',
-      startedBy: 'Иванов И.И.',
-      warehouse: 'Склад №1',
-      itemsCount: 45,
-      discrepancies: 3
-    },
-    {
-      id: 2,
-      sessionNumber: 'ИНВ-002',
-      startedAt: '2025-01-15 10:00',
-      endedAt: '2025-01-15 17:00',
-      status: 'COMPLETED',
-      startedBy: 'Петров П.П.',
-      warehouse: 'Склад №2',
-      itemsCount: 32,
-      discrepancies: 1
-    },
-  ]);
+  const navigate = useNavigate();
+  const user = useSelector(selectUser);
+  const { notify } = useSnackbar();
+  const orgId = user?.organizationId;
+  const userId = user?.userId;
 
-  const [activeSession, setActiveSession] = useState(null);
+  const [bootLoading, setBootLoading] = useState(true);
+  const { data: warehouses } = useWarehouses();
 
-  const [sessionItems, setSessionItems] = useState([]);
+  const [session, setSession] = useState(null);
+  const [sessionLoading, setSessionLoading] = useState(false);
 
-  const [openStartDialog, setOpenStartDialog] = useState(false);
-  const [newSessionForm, setNewSessionForm] = useState({
-    warehouse: '',
-    startedBy: '',
-    reason: '',
-    commission: '',
+  const [startOpen, setStartOpen] = useState(false);
+  const [startBusy, setStartBusy] = useState(false);
+  const startForm = useForm({
+    resolver: yupResolver(inventoryStartSchema),
+    defaultValues: { warehouseId: '', notes: '' },
+    mode: 'onTouched',
   });
-  const [sessionErrors, setSessionErrors] = useState({});
 
-  const [itemForm, setItemForm] = useState({ ...initialItem });
-  const [itemErrors, setItemErrors] = useState({});
+  const [products, setProducts] = useState([]);
+  const [productSearchBusy, setProductSearchBusy] = useState(false);
+  const [recordBusy, setRecordBusy] = useState(false);
+  const recordForm = useForm({
+    resolver: yupResolver(inventoryRecordSchema),
+    defaultValues: EMPTY_RECORD,
+    mode: 'onTouched',
+  });
 
-  const handleStartSession = () => {
-    const errors = {};
-    if (!newSessionForm.warehouse) errors.warehouse = 'Укажите склад';
-    if (!newSessionForm.startedBy) errors.startedBy = 'Укажите ответственного';
-    if (!newSessionForm.reason) errors.reason = 'Укажите причину';
-    if (!newSessionForm.commission) errors.commission = 'Укажите комиссию';
+  const [confirm, setConfirm] = useState({ open: false, action: null });
 
-    if (Object.keys(errors).length > 0) {
-      setSessionErrors(errors);
-      return;
+  useEffect(() => {
+    if (user && !orgId) navigate('/main/organization?firstTime=true', { replace: true });
+  }, [user, orgId, navigate]);
+
+  const loadSession = useCallback(async (sessionId) => {
+    setSessionLoading(true);
+    try {
+      const data = await productService.getInventorySession(sessionId);
+      if (data?.status === 'ACTIVE') {
+        setSession(data);
+      } else {
+        localStorage.removeItem(ACTIVE_SESSION_KEY(userId));
+        setSession(null);
+      }
+    } catch (err) {
+      localStorage.removeItem(ACTIVE_SESSION_KEY(userId));
+      setSession(null);
+    } finally {
+      setSessionLoading(false);
     }
+  }, [userId]);
 
-    const newSession = {
-      id: Date.now(),
-      sessionNumber: 'ИНВ-' + String(sessions.length + 1).padStart(3, '0'),
-      warehouse: newSessionForm.warehouse,
-      startedBy: newSessionForm.startedBy,
-      reason: newSessionForm.reason,
-      commission: newSessionForm.commission,
-      startedAt: new Date().toLocaleString('ru-RU'),
-      status: 'IN_PROGRESS',
-    };
+  useEffect(() => {
+    if (!orgId || !userId) return;
+    let cancelled = false;
+    (async () => {
+      setBootLoading(true);
+      const storedSid = localStorage.getItem(ACTIVE_SESSION_KEY(userId));
+      if (storedSid && !cancelled) await loadSession(storedSid);
+      if (!cancelled) setBootLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [orgId, userId, loadSession]);
 
-    setActiveSession(newSession);
-    setSessionItems([]);
-    setOpenStartDialog(false);
-    setNewSessionForm({
-      warehouse: '',
-      startedBy: '',
-      reason: '',
-      commission: '',
-    });
-    setSessionErrors({});
+  const handleStartOpen = () => {
+    startForm.reset({ warehouseId: warehouses[0]?.warehouseId || '', notes: '' });
+    setStartOpen(true);
   };
 
-  const handleAddItem = () => {
-    const errors = {};
-    if (!itemForm.productName) errors.productName = 'Укажите наименование';
-    if (!itemForm.countedQuantity) errors.countedQuantity = 'Укажите фактическое количество';
-
-    if (Object.keys(errors).length > 0) {
-      setItemErrors(errors);
-      return;
-    }
-
-    const newItem = {
-      id: Date.now(),
-      ...itemForm,
-      scannedAt: new Date().toLocaleString('ru-RU'),
-      scannedBy: activeSession.startedBy,
-      expectedQuantity: (Math.random() * 100).toFixed(2),
-    };
-
-    setSessionItems([...sessionItems, newItem]);
-    setItemForm({ ...initialItem });
-    setItemErrors({});
-  };
-
-  const handleRemoveItem = (itemId) => {
-    setSessionItems(sessionItems.filter(item => item.id !== itemId));
-  };
-
-  const handleCompleteSession = () => {
-    if (sessionItems.length === 0) {
-      alert('Добавьте хотя бы один товар перед завершением сессии');
-      return;
-    }
-
-    const completedSession = {
-      ...activeSession,
-      status: 'COMPLETED',
-      endedAt: new Date().toLocaleString('ru-RU'),
-      itemsCount: sessionItems.length,
-      discrepancies: sessionItems.filter(item => {
-        const diff = Number(item.countedQuantity) - (Number(item.expectedQuantity) || 0);
-        return diff !== 0;
-      }).length,
-    };
-
-    setSessions([completedSession, ...sessions]);
-    setActiveSession(null);
-    setSessionItems([]);
-  };
-
-  const handleCancelSession = () => {
-    if (window.confirm('Вы уверены, что хотите отменить текущую сессию? Все добавленные товары будут удалены.')) {
-      setActiveSession(null);
-      setSessionItems([]);
+  const onStart = async (values) => {
+    setStartBusy(true);
+    try {
+      const res = await productService.startInventoryCheck({
+        warehouseId: values.warehouseId,
+        userId,
+        notes: values.notes || null,
+      });
+      const sid = res?.sessionId;
+      if (!sid) throw new Error('Сервер не вернул sessionId');
+      localStorage.setItem(ACTIVE_SESSION_KEY(userId), sid);
+      notify('Сессия инвентаризации начата');
+      setStartOpen(false);
+      await loadSession(sid);
+    } catch (err) {
+      notify(err.message || 'Не удалось начать сессию', 'error');
+    } finally {
+      setStartBusy(false);
     }
   };
 
-  const calculateDiscrepancy = (item) => {
-    if (!item.expectedQuantity || !item.countedQuantity) return null;
-    return Number(item.countedQuantity) - Number(item.expectedQuantity);
+  const handleProductSearch = async (query) => {
+    if (!query || query.length < 2) return;
+    setProductSearchBusy(true);
+    try {
+      const res = await productService.searchProducts(query);
+      const list = Array.isArray(res) ? res : (res?.content || []);
+      setProducts(list);
+    } catch (err) {
+
+    } finally {
+      setProductSearchBusy(false);
+    }
   };
+
+  const onRecord = async (values) => {
+    setRecordBusy(true);
+    try {
+      await productService.recordInventoryCount(session.sessionId, {
+        productId: values.productId,
+        cellId: values.cellId || null,
+        actualQuantity: values.actualQuantity,
+        notes: values.notes || null,
+      });
+      notify('Подсчёт записан');
+      recordForm.reset(EMPTY_RECORD);
+      await loadSession(session.sessionId);
+    } catch (err) {
+      notify(err.message || 'Не удалось записать подсчёт', 'error');
+    } finally {
+      setRecordBusy(false);
+    }
+  };
+
+  const handleComplete = async () => {
+    setRecordBusy(true);
+    try {
+      await productService.completeInventoryCheck(session.sessionId, userId);
+      localStorage.removeItem(ACTIVE_SESSION_KEY(userId));
+      notify('Сессия инвентаризации завершена');
+      setSession(null);
+    } catch (err) {
+      notify(err.message || 'Не удалось завершить сессию', 'error');
+    } finally {
+      setRecordBusy(false);
+      setConfirm({ open: false, action: null });
+    }
+  };
+
+  const handleCancel = async () => {
+    setRecordBusy(true);
+    try {
+      await productService.cancelInventoryCheck(session.sessionId);
+      localStorage.removeItem(ACTIVE_SESSION_KEY(userId));
+      notify('Сессия отменена');
+      setSession(null);
+    } catch (err) {
+      notify(err.message || 'Не удалось отменить сессию', 'error');
+    } finally {
+      setRecordBusy(false);
+      setConfirm({ open: false, action: null });
+    }
+  };
+
+  if (!user || !orgId) return null;
+
+  const warehouseName = (id) => warehouses.find((w) => (w.warehouseId || w.id) === id)?.name || id;
+
+  if (bootLoading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
-    <Box sx={{ width: '100%', bgcolor: 'background.default', minHeight: '100vh', py: 4 }}>
-      <Box sx={{ width: '100%', maxWidth: 1400, mx: 'auto', px: { xs: 2, md: 4 } }}>
-        <Typography variant="h4" fontWeight={900} mb={3} textAlign="center">
-          Инвентаризация
-        </Typography>
+    <Box sx={{ width: '100%', bgcolor: '#f5f5f5', minHeight: '100vh', pt: 4, pb: 6 }}>
+      <Box sx={{ width: '100%', maxWidth: 1440, mx: 'auto', px: { xs: 2, md: 3 } }}>
+        <Typography variant="h4" fontWeight={700} mb={3}>Инвентаризация</Typography>
 
-        {activeSession ? (
-          <>
-            <Paper sx={{ p: { xs: 2, md: 4 }, mb: 4, bgcolor: 'success.50', border: 2, borderColor: 'success.main' }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                <Box>
-                  <Typography variant="h5" fontWeight={700} color="success.dark">
-                    Активная сессия: {activeSession.sessionNumber}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" mt={0.5}>
-                    Начата: {activeSession.startedAt} | Склад: {activeSession.warehouse} | Ответственный: {activeSession.startedBy}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Причина: {activeSession.reason}
-                  </Typography>
-                </Box>
-                <Box display="flex" gap={1}>
-                  <Button
-                    variant="contained"
-                    color="success"
-                    startIcon={<StopIcon />}
-                    onClick={handleCompleteSession}
-                  >
-                    Завершить сессию
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    onClick={handleCancelSession}
-                  >
-                    Отменить
-                  </Button>
-                </Box>
+        {!session ? (
+          <Paper sx={{ borderRadius: 3, p: 4 }}>
+            <EmptyState
+              icon={PlayArrowIcon}
+              title="Активной сессии нет"
+              description="Начните сессию инвентаризации для одного из складов. Во время сессии вы будете записывать фактические остатки товаров; по завершении система сравнит их с учётными."
+              actionLabel="Начать сессию"
+              onAction={handleStartOpen}
+            />
+          </Paper>
+        ) : (
+          <Paper sx={{ borderRadius: 3, p: 4, mb: 3 }}>
+            {sessionLoading ? (
+              <Box display="flex" justifyContent="center" py={2}>
+                <CircularProgress size={28} />
               </Box>
-
-              <Alert severity="info" sx={{ mb: 2 }}>
-                Товаров добавлено: <strong>{sessionItems.length}</strong>
-              </Alert>
-
-              <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-                <Typography variant="h6" fontWeight={700} mb={2}>
-                  Добавить товар в сессию
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={3}>
-                    <TextField
-                      label="Артикул (SKU)"
-                      name="sku"
-                      value={itemForm.sku}
-                      onChange={(e) => {
-                        const sku = e.target.value;
-                        setItemForm({ ...itemForm, sku });
-                        const foundProduct = mockProducts.find(p => p.sku === sku);
-                        if (foundProduct) {
-                          setItemForm({ ...itemForm, sku, productName: foundProduct.label });
-                        }
-                      }}
-                      fullWidth
-                      size="small"
-                      placeholder="MILK-001"
-                      error={!!itemErrors.sku}
-                      helperText={itemErrors.sku || "Отсканируйте или введите артикул"}
-                      sx={{ minWidth: 200 }}
-                      autoFocus
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <Autocomplete
-                      freeSolo
-                      options={mockProducts}
-                      value={itemForm.productName}
-                      onChange={(event, newValue) => {
-                        const productName = typeof newValue === 'string' ? newValue : newValue?.label || '';
-                        const sku = typeof newValue === 'object' && newValue?.sku ? newValue.sku : itemForm.sku;
-                        setItemForm({ ...itemForm, productName, sku });
-                      }}
-                      onInputChange={(event, newInputValue) => {
-                        setItemForm({ ...itemForm, productName: newInputValue });
-                      }}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Наименование товара"
-                          size="small"
-                          error={!!itemErrors.productName}
-                          helperText={itemErrors.productName}
-                          sx={{ minWidth: 200 }}
-                        />
-                      )}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={2}>
-                    <Autocomplete
-                      freeSolo
-                      options={mockBatches}
-                      value={itemForm.batchNumber}
-                      onChange={(event, newValue) => {
-                        setItemForm({ ...itemForm, batchNumber: typeof newValue === 'string' ? newValue : newValue?.label || '' });
-                      }}
-                      onInputChange={(event, newInputValue) => {
-                        setItemForm({ ...itemForm, batchNumber: newInputValue });
-                      }}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Номер партии"
-                          size="small"
-                          sx={{ minWidth: 200 }}
-                        />
-                      )}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={1.5}>
-                    <TextField
-                      select
-                      label="Ед. изм."
-                      value={itemForm.unit}
-                      onChange={(e) => setItemForm({ ...itemForm, unit: e.target.value })}
-                      fullWidth
-                      size="small"
-                      sx={{ minWidth: 200 }}
-                    >
-                      {units.map(u => <MenuItem key={u} value={u}>{u}</MenuItem>)}
-                    </TextField>
-                  </Grid>
-                  <Grid item xs={12} md={1.5}>
-                    <TextField
-                      label="Фактически"
-                      type="number"
-                      value={itemForm.countedQuantity}
-                      onChange={(e) => setItemForm({ ...itemForm, countedQuantity: e.target.value })}
-                      fullWidth
-                      size="small"
-                      inputProps={{ step: "0.01" }}
-                      error={!!itemErrors.countedQuantity}
-                      helperText={itemErrors.countedQuantity}
-                      sx={{ minWidth: 200 }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={1}>
+            ) : (
+              <>
+                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={2}>
+                  <Box>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Typography variant="h6" fontWeight={700}>
+                        Активная сессия
+                      </Typography>
+                      <Chip
+                        label={STATUS_LABEL[session.status]?.label || session.status}
+                        color={STATUS_LABEL[session.status]?.color || 'default'}
+                        size="small"
+                      />
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary" mt={0.5}>
+                      Склад: <b>{warehouseName(session.warehouseId)}</b>
+                      {session.startedAt && <> · Начата: {new Date(session.startedAt).toLocaleString('ru-RU')}</>}
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1}>
                     <Button
                       variant="contained"
-                      color="primary"
-                      startIcon={<AddIcon />}
-                      onClick={handleAddItem}
-                      fullWidth
-                      sx={{ height: '40px' }}
+                      color="success"
+                      startIcon={<StopIcon />}
+                      onClick={() => setConfirm({ open: true, action: 'complete' })}
                     >
-                      Добавить
+                      Завершить
                     </Button>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      startIcon={<CancelIcon />}
+                      onClick={() => setConfirm({ open: true, action: 'cancel' })}
+                    >
+                      Отменить
+                    </Button>
+                  </Stack>
+                </Stack>
+
+                <Grid container spacing={2} sx={{ mt: 1 }}>
+                  <Grid size={{ xs: 6, md: 3 }}>
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Записано подсчётов</Typography>
+                      <Typography variant="h5" fontWeight={700}>
+                        {session.filledRecords ?? 0}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid size={{ xs: 6, md: 3 }}>
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="caption" color="text.secondary">Всего записей</Typography>
+                      <Typography variant="h5" fontWeight={700}>
+                        {session.totalRecords ?? 0}
+                      </Typography>
+                    </Paper>
                   </Grid>
                 </Grid>
-              </Paper>
 
-              {sessionItems.length > 0 && (
-                <TableContainer component={Paper} variant="outlined">
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Артикул (SKU)</TableCell>
-                        <TableCell>Наименование</TableCell>
-                        <TableCell>Партия</TableCell>
-                        <TableCell>Ед. изм.</TableCell>
-                        <TableCell>По учету</TableCell>
-                        <TableCell>Фактически</TableCell>
-                        <TableCell>Разница</TableCell>
-                        <TableCell>Время</TableCell>
-                        <TableCell></TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {sessionItems.map((item) => {
-                        const diff = calculateDiscrepancy(item);
-                        return (
-                          <TableRow key={item.id}>
-                            <TableCell>{item.sku || '-'}</TableCell>
-                            <TableCell>{item.productName}</TableCell>
-                            <TableCell>{item.batchNumber || '-'}</TableCell>
-                            <TableCell>{item.unit}</TableCell>
-                            <TableCell>{item.expectedQuantity || '-'}</TableCell>
-                            <TableCell>{item.countedQuantity}</TableCell>
-                            <TableCell>
-                              {diff !== null && (
-                                <Chip
-                                  label={diff >= 0 ? `+${diff}` : diff}
-                                  size="small"
-                                  color={diff === 0 ? 'default' : diff > 0 ? 'success' : 'error'}
-                                />
-                              )}
-                            </TableCell>
-                            <TableCell sx={{ fontSize: '0.75rem' }}>{item.scannedAt}</TableCell>
-                            <TableCell>
-                              <IconButton
+                <Divider sx={{ my: 3 }} />
+
+                <Typography variant="h6" fontWeight={700} mb={2}>Записать подсчёт</Typography>
+
+                <form onSubmit={recordForm.handleSubmit(onRecord)} noValidate>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 5 }}>
+                      <Controller
+                        name="productId"
+                        control={recordForm.control}
+                        render={({ field, fieldState }) => (
+                          <Autocomplete
+                            options={products}
+                            getOptionLabel={(o) => `${o.name || ''} (${o.sku || ''})`}
+                            loading={productSearchBusy}
+                            onInputChange={(_, q) => handleProductSearch(q)}
+                            onChange={(_, val) => field.onChange(val?.productId || val?.id || '')}
+                            renderInput={(params) => (
+                              <TextField
+                                {...params}
+                                label="Товар"
                                 size="small"
-                                color="error"
-                                onClick={() => handleRemoveItem(item.id)}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              )}
-            </Paper>
-          </>
-        ) : (
-          <Box textAlign="center" mb={4}>
-            <Paper sx={{ p: 4, maxWidth: 600, mx: 'auto' }}>
-              <Typography variant="h6" mb={2}>
-                Нет активной сессии инвентаризации
-              </Typography>
-              <Typography variant="body2" color="text.secondary" mb={3}>
-                Начните новую сессию для проведения инвентаризации товаров на складе
-              </Typography>
-              <Button
-                variant="contained"
-                color="primary"
-                size="large"
-                startIcon={<PlayArrowIcon />}
-                onClick={() => setOpenStartDialog(true)}
-              >
-                Начать новую сессию
-              </Button>
-            </Paper>
-          </Box>
+                                fullWidth
+                                error={!!fieldState.error}
+                                helperText={fieldState.error?.message}
+                              />
+                            )}
+                            size="small"
+                          />
+                        )}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                      <TextField
+                        label="Cell ID (опционально)"
+                        size="small"
+                        fullWidth
+                        helperText={recordForm.formState.errors.cellId?.message || 'UUID ячейки, если применимо'}
+                        error={!!recordForm.formState.errors.cellId}
+                        {...recordForm.register('cellId')}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+                      <TextField
+                        label="Факт. количество"
+                        type="number"
+                        size="small"
+                        fullWidth
+                        inputProps={{ step: '0.01', min: '0' }}
+                        {...recordForm.register('actualQuantity')}
+                        error={!!recordForm.formState.errors.actualQuantity}
+                        helperText={recordForm.formState.errors.actualQuantity?.message}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 2 }}>
+                      <Button
+                        type="submit"
+                        variant="contained"
+                        startIcon={<AddCircleIcon />}
+                        fullWidth
+                        sx={{ height: 40 }}
+                        disabled={recordBusy}
+                      >
+                        {recordBusy ? <CircularProgress size={20} color="inherit" /> : 'Записать'}
+                      </Button>
+                    </Grid>
+                    <Grid size={12}>
+                      <TextField
+                        label="Примечание"
+                        size="small"
+                        fullWidth
+                        {...recordForm.register('notes')}
+                      />
+                    </Grid>
+                  </Grid>
+                </form>
+
+                <Divider sx={{ my: 3 }} />
+
+                <Typography variant="h6" fontWeight={700} mb={2}>
+                  Записи сессии
+                </Typography>
+
+                {(session.records || []).length === 0 ? (
+                  <Alert severity="info">
+                    На складе нет товаров — записывать нечего.
+                  </Alert>
+                ) : (
+                  <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 500 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Товар</TableCell>
+                          <TableCell>SKU</TableCell>
+                          <TableCell>Ячейка</TableCell>
+                          <TableCell align="right">Ожидалось</TableCell>
+                          <TableCell align="right">Фактически</TableCell>
+                          <TableCell align="right">Расхождение</TableCell>
+                          <TableCell>Статус</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {session.records.map((rec) => {
+                          const filled = rec.isFilled ?? rec.actualQuantity != null;
+                          const discrepancy = Number(rec.discrepancy ?? 0);
+                          const hasDiscrepancy = filled && discrepancy !== 0;
+                          return (
+                            <TableRow key={rec.countId} hover>
+                              <TableCell>{rec.productName || (rec.productId ? String(rec.productId).slice(0, 8) + '…' : '—')}</TableCell>
+                              <TableCell>
+                                <Typography variant="caption">{rec.productSku || '—'}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                                  {rec.cellId ? String(rec.cellId).slice(0, 8) + '…' : '—'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right">{rec.expectedQuantity ?? '—'}</TableCell>
+                              <TableCell align="right">
+                                {filled ? (
+                                  <Typography
+                                    variant="body2"
+                                    fontWeight={hasDiscrepancy ? 700 : 400}
+                                    color={hasDiscrepancy ? (discrepancy < 0 ? 'error.main' : 'warning.main') : 'inherit'}
+                                  >
+                                    {rec.actualQuantity}
+                                  </Typography>
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">—</Typography>
+                                )}
+                              </TableCell>
+                              <TableCell align="right">
+                                {filled ? (
+                                  <Typography
+                                    variant="body2"
+                                    color={hasDiscrepancy ? (discrepancy < 0 ? 'error.main' : 'warning.main') : 'success.main'}
+                                  >
+                                    {discrepancy > 0 ? `+${discrepancy}` : discrepancy}
+                                  </Typography>
+                                ) : '—'}
+                              </TableCell>
+                              <TableCell>
+                                {!filled ? (
+                                  <Chip icon={<HourglassEmptyIcon />} label="Не записано" size="small" />
+                                ) : rec.markedForWriteoff ? (
+                                  <Tooltip title="Помечено к списанию (фактическое < ожидаемого)">
+                                    <Chip
+                                      icon={<WarningAmberIcon />}
+                                      label="К списанию"
+                                      color="warning"
+                                      size="small"
+                                    />
+                                  </Tooltip>
+                                ) : hasDiscrepancy ? (
+                                  <Chip label="Расхождение" color={discrepancy < 0 ? 'error' : 'warning'} size="small" />
+                                ) : (
+                                  <Chip icon={<CheckCircleIcon />} label="OK" color="success" size="small" />
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </>
+            )}
+          </Paper>
         )}
+      </Box>
 
-        <Paper sx={{ p: { xs: 2, md: 4 } }}>
-          <Typography variant="h6" fontWeight={700} mb={2}>
-            История инвентаризаций
-          </Typography>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Номер сессии</TableCell>
-                  <TableCell>Склад</TableCell>
-                  <TableCell>Начало</TableCell>
-                  <TableCell>Окончание</TableCell>
-                  <TableCell>Ответственный</TableCell>
-                  <TableCell>Товаров</TableCell>
-                  <TableCell>Расхождений</TableCell>
-                  <TableCell>Статус</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {sessions.map(s => (
-                  <TableRow key={s.id} hover sx={{ cursor: 'pointer' }}>
-                    <TableCell fontWeight={600}>{s.sessionNumber}</TableCell>
-                    <TableCell>{s.warehouse}</TableCell>
-                    <TableCell>{s.startedAt}</TableCell>
-                    <TableCell>{s.endedAt}</TableCell>
-                    <TableCell>{s.startedBy}</TableCell>
-                    <TableCell>{s.itemsCount}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={s.discrepancies}
-                        size="small"
-                        color={s.discrepancies === 0 ? 'success' : 'warning'}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={s.status === 'COMPLETED' ? 'Завершена' : 'В процессе'}
-                        size="small"
-                        color="success"
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-
-        <Dialog open={openStartDialog} onClose={() => setOpenStartDialog(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Начать новую сессию инвентаризации</DialogTitle>
+      {}
+      <Dialog open={startOpen} onClose={() => !startBusy && setStartOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Начать сессию инвентаризации</DialogTitle>
+        <form onSubmit={startForm.handleSubmit(onStart)} noValidate>
           <DialogContent>
-            <Grid container spacing={2} sx={{ mt: 0.5 }}>
-              <Grid item xs={12}>
-                <TextField
-                  select
-                  label="Склад"
-                  value={newSessionForm.warehouse}
-                  onChange={(e) => setNewSessionForm({ ...newSessionForm, warehouse: e.target.value })}
-                  fullWidth
-                  error={!!sessionErrors.warehouse}
-                  helperText={sessionErrors.warehouse}
-                  sx={{ minWidth: 200 }}
-                >
-                  {warehouses.map(w => <MenuItem key={w} value={w}>{w}</MenuItem>)}
-                </TextField>
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  label="Материально ответственное лицо"
-                  value={newSessionForm.startedBy}
-                  onChange={(e) => setNewSessionForm({ ...newSessionForm, startedBy: e.target.value })}
-                  fullWidth
-                  placeholder="Иванов И.И."
-                  error={!!sessionErrors.startedBy}
-                  helperText={sessionErrors.startedBy}
-                  sx={{ minWidth: 200 }}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  select
-                  label="Причина инвентаризации"
-                  value={newSessionForm.reason}
-                  onChange={(e) => setNewSessionForm({ ...newSessionForm, reason: e.target.value })}
-                  fullWidth
-                  error={!!sessionErrors.reason}
-                  helperText={sessionErrors.reason}
-                  sx={{ minWidth: 200 }}
-                >
-                  {reasons.map(r => <MenuItem key={r} value={r}>{r}</MenuItem>)}
-                </TextField>
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  label="Состав комиссии"
-                  value={newSessionForm.commission}
-                  onChange={(e) => setNewSessionForm({ ...newSessionForm, commission: e.target.value })}
-                  fullWidth
-                  placeholder="Петров П.П., Сидоров С.С."
-                  error={!!sessionErrors.commission}
-                  helperText={sessionErrors.commission}
-                  sx={{ minWidth: 200 }}
-                />
-              </Grid>
-            </Grid>
+            <Stack spacing={2} mt={1}>
+              <Controller
+                name="warehouseId"
+                control={startForm.control}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!startForm.formState.errors.warehouseId}>
+                    <InputLabel>Склад</InputLabel>
+                    <Select {...field} label="Склад" variant="outlined" disabled={startBusy}>
+                      {warehouses.length === 0 ? (
+                        <MenuItem value="" disabled>Нет складов</MenuItem>
+                      ) : (
+                        warehouses.map((w) => (
+                          <MenuItem key={w.warehouseId || w.id} value={w.warehouseId || w.id}>
+                            {w.name}
+                          </MenuItem>
+                        ))
+                      )}
+                    </Select>
+                    {startForm.formState.errors.warehouseId && (
+                      <FormHelperText>{startForm.formState.errors.warehouseId.message}</FormHelperText>
+                    )}
+                  </FormControl>
+                )}
+              />
+              <TextField
+                label="Примечания"
+                multiline
+                rows={2}
+                fullWidth
+                disabled={startBusy}
+                {...startForm.register('notes')}
+              />
+            </Stack>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpenStartDialog(false)}>Отмена</Button>
-            <Button onClick={handleStartSession} variant="contained" color="primary">
-              Начать сессию
+            <Button onClick={() => setStartOpen(false)} disabled={startBusy}>Отмена</Button>
+            <Button variant="contained" type="submit" disabled={startBusy}>
+              {startBusy ? <CircularProgress size={20} color="inherit" /> : 'Начать'}
             </Button>
           </DialogActions>
-        </Dialog>
-      </Box>
+        </form>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirm.open}
+        onClose={() => setConfirm({ open: false, action: null })}
+        onConfirm={confirm.action === 'complete' ? handleComplete : handleCancel}
+        busy={recordBusy}
+        title={confirm.action === 'complete' ? 'Завершение сессии' : 'Отмена сессии'}
+        message={confirm.action === 'complete'
+          ? 'Завершить сессию инвентаризации? Будет сформирован отчёт о расхождениях.'
+          : 'Отменить сессию? Все записанные подсчёты будут отброшены.'}
+        confirmText={confirm.action === 'complete' ? 'Завершить' : 'Отменить сессию'}
+        confirmColor={confirm.action === 'complete' ? 'success' : 'error'}
+      />
     </Box>
   );
 };

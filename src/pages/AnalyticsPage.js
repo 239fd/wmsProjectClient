@@ -1,476 +1,197 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Box,
-  Typography,
-  Grid,
-  Paper,
-  MenuItem,
-  Select,
-  InputLabel,
-  FormControl,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Chip,
-  Card,
-  CardContent,
-  Tabs,
-  Tab,
-  LinearProgress,
-  Alert
+  Box, Typography, Grid, Paper, Card, CardContent, Tabs, Tab, Chip, Skeleton, Alert,
+  MenuItem, Select, InputLabel, FormControl, LinearProgress,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Stack,
+  TextField, Button,
 } from '@mui/material';
 import {
+  Inventory as InventoryIcon,
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
-  Inventory as InventoryIcon,
-  LocalShipping as ShippingIcon,
-  Warning as WarningIcon,
-  CheckCircle as CheckCircleIcon,
-  Speed as SpeedIcon,
-  Timer as TimerIcon
+  TrendingFlat as TrendingFlatIcon,
+  Receipt as ReceiptIcon,
+  Storefront as StorefrontIcon,
+  Warehouse as WarehouseIcon,
+  History as HistoryIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
+import { useSelector } from 'react-redux';
+import { selectUser } from '../store/slices/authSlice';
+import analyticsService from '../services/analyticsService';
+import productService from '../services/productService';
+import { useWarehouses, useEmployees } from '../hooks';
+import { useSnackbar } from '../context/SnackbarContext';
+import EmptyState from '../components/shared/EmptyState';
 
-const mockKpiData = [
-  { label: 'Всего товаров', value: '2 847', icon: InventoryIcon, color: '#1976d2', trend: '+12%' },
-  { label: 'Активных позиций', value: '1 245', icon: TrendingUpIcon, color: '#2e7d32', trend: '+8%' },
-  { label: 'Операций за период', value: '3 654', icon: ShippingIcon, color: '#ed6c02', trend: '+15%' },
-  { label: 'Свободных мест', value: '1 542', icon: InventoryIcon, color: '#9c27b0', trend: '-5%' },
+const PERIODS = [
+  { value: 'week', label: 'Неделя', days: 7 },
+  { value: 'month', label: 'Месяц', days: 30 },
+  { value: 'quarter', label: 'Квартал', days: 90 },
+  { value: 'year', label: 'Год', days: 365 },
 ];
 
-const mockWarehouseTurnover = [
-  { name: 'Склад 1', operations: 1245, utilization: 78, efficiency: 92 },
-  { name: 'Склад 2', operations: 987, utilization: 65, efficiency: 88 },
-  { name: 'Склад 3', operations: 1422, utilization: 85, efficiency: 95 },
-];
+const OP_TYPE = {
+  RECEIPT:     { label: 'Приёмка',     color: '#2e7d32' },
+  RECEIVE:     { label: 'Приёмка',     color: '#2e7d32' },
+  SHIP:        { label: 'Отгрузка',    color: '#1976d2' },
+  TRANSFER:    { label: 'Перемещение', color: '#9c27b0' },
+  WRITEOFF:    { label: 'Списание',    color: '#d32f2f' },
+  WRITE_OFF:   { label: 'Списание',    color: '#d32f2f' },
+  REVALUATION: { label: 'Переоценка',  color: '#ed6c02' },
+  RESERVE:     { label: 'Резерв',      color: '#0097a7' },
+  RELEASE:     { label: 'Освобождение',color: '#0288d1' },
+  INVENTORY:   { label: 'Инвентаризация', color: '#0288d1' },
+};
+const opMeta = (key) => OP_TYPE[key] || { label: key, color: '#616161' };
 
-const mockOperationsByType = [
-  { type: 'Приемка', count: 1245, percentage: 34, color: '#2e7d32' },
-  { type: 'Отгрузка', count: 1520, percentage: 42, color: '#1976d2' },
-  { type: 'Переоценка', count: 456, percentage: 12, color: '#ed6c02' },
-  { type: 'Списание', count: 433, percentage: 12, color: '#d32f2f' },
-];
+const ROLE_LABEL = { WORKER: 'Работник', ACCOUNTANT: 'Бухгалтер', DIRECTOR: 'Директор' };
 
-const mockWarehouseOperations = {
-  week: [
-    { warehouse: 'Склад 1', period1: 45, period2: 52, period3: 48, period4: 50, period5: 55, period6: 42, period7: 38 },
-    { warehouse: 'Склад 2', period1: 38, period2: 42, period3: 40, period4: 45, period5: 48, period6: 35, period7: 30 },
-    { warehouse: 'Склад 3', period1: 50, period2: 55, period3: 52, period4: 58, period5: 60, period6: 48, period7: 45 },
-  ],
-  month: [
-    { warehouse: 'Склад 1', period1: 280, period2: 310, period3: 295, period4: 360 },
-    { warehouse: 'Склад 2', period1: 220, period2: 245, period3: 230, period4: 292 },
-    { warehouse: 'Склад 3', period1: 315, period2: 340, period3: 365, period4: 402 },
-  ],
-  quarter: [
-    { warehouse: 'Склад 1', period1: 870, period2: 920, period3: 950 },
-    { warehouse: 'Склад 2', period1: 687, period2: 710, period3: 745 },
-    { warehouse: 'Склад 3', period1: 980, period2: 1020, period3: 1055 },
-  ],
-  year: [
-    { warehouse: 'Склад 1', period1: 2740, period2: 2850, period3: 2920, period4: 3100 },
-    { warehouse: 'Склад 2', period1: 2142, period2: 2230, period3: 2310, period4: 2450 },
-    { warehouse: 'Склад 3', period1: 3055, period2: 3180, period3: 3290, period4: 3520 },
-  ],
+const formatDateIso = (date) => {
+  const d = new Date(date);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 };
 
-const periodLabels = {
-  week: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'],
-  month: ['Неделя 1', 'Неделя 2', 'Неделя 3', 'Неделя 4'],
-  quarter: ['Месяц 1', 'Месяц 2', 'Месяц 3'],
-  year: ['Кв. 1', 'Кв. 2', 'Кв. 3', 'Кв. 4'],
+const dayLabelShort = (iso) => {
+  const d = new Date(iso);
+  return d.toLocaleDateString('ru-RU', { weekday: 'short', day: '2-digit', month: '2-digit' });
 };
 
-const mockEmployeePerformance = [
-  { name: 'Иванов И.', operations: 345, avgTime: 12, efficiency: 95 },
-  { name: 'Петров П.', operations: 320, avgTime: 13, efficiency: 92 },
-  { name: 'Сидорова А.', operations: 298, avgTime: 14, efficiency: 88 },
-  { name: 'Козлов А.', operations: 285, avgTime: 15, efficiency: 85 },
-];
-
-const mockOrderFulfillment = {
-  onTime: 92,
-  delayed: 5,
-  critical: 3,
-  avgTime: 18.5,
-  target: 24,
+const formatDateTime = (raw) => {
+  if (!raw) return '—';
+  try {
+    const d = new Date(raw);
+    return `${d.toLocaleDateString('ru-RU')} ${d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+  } catch {
+    return String(raw);
+  }
 };
 
-const mockDailyOperations = [
-  { day: 'Пн', operations: 520 },
-  { day: 'Вт', operations: 680 },
-  { day: 'Ср', operations: 590 },
-  { day: 'Чт', operations: 720 },
-  { day: 'Пт', operations: 810 },
-  { day: 'Сб', operations: 450 },
-  { day: 'Вс', operations: 280 },
-];
+const TrendBadge = ({ deltaPercent }) => {
+    if (deltaPercent === null || deltaPercent === undefined) return null;
+    const pct = Number(deltaPercent);
+    const rounded = Math.round(pct * 10) / 10;
+    let Icon, color, bg;
+    if (rounded > 0) {
+        Icon = TrendingUpIcon;
+        color = '#2e7d32';
+        bg = '#e8f5e9';
+    } else if (rounded < 0) {
+        Icon = TrendingDownIcon;
+        color = '#d32f2f';
+        bg = '#ffebee';
+    } else {
+        Icon = TrendingFlatIcon;
+        color = '#616161';
+        bg = '#f5f5f5';
+    }
+    const sign = rounded > 0 ? '+' : '';
+    return (
+        <Box sx={{
+            display: 'inline-flex', alignItems: 'center', gap: 0.5,
+            bgcolor: bg, color, borderRadius: 1.5, px: 1, py: 0.25,
+        }}>
+            <Icon sx={{ fontSize: 16 }} />
+            <Typography variant="caption" fontWeight={700}>
+                {sign}{rounded.toFixed(1)}%
+            </Typography>
+        </Box>
+    );
+};
 
-const periods = [
-  { value: 'week', label: 'Неделя' },
-  { value: 'month', label: 'Месяц' },
-  { value: 'quarter', label: 'Квартал' },
-  { value: 'year', label: 'Год' },
-];
+const KPICard = ({ icon: Icon, label, value, color, loading, trend }) => (
+  <Card sx={{ borderRadius: 3, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+    <CardContent>
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={1.5}>
+        <Box sx={{ bgcolor: color + '20', borderRadius: 2, p: 1, display: 'inline-flex' }}>
+          <Icon sx={{ color, fontSize: 26 }} />
+        </Box>
+        {!loading && trend !== undefined && <TrendBadge deltaPercent={trend} />}
+      </Stack>
+      {loading ? (
+        <Skeleton variant="text" width={100} height={42} />
+      ) : (
+        <Typography variant="h4" fontWeight={700}>
+          {value === null || value === undefined
+            ? '—'
+            : Number(value).toLocaleString('ru-RU')}
+        </Typography>
+      )}
+      <Typography color="text.secondary" variant="body2">{label}</Typography>
+    </CardContent>
+  </Card>
+);
 
 const AnalyticsPage = () => {
+  const user = useSelector(selectUser);
+  const { notify } = useSnackbar();
+  const orgId = user?.organizationId;
+
   const [period, setPeriod] = useState('month');
-  const [tabValue, setTabValue] = useState(0);
+  const [tab, setTab] = useState(0);
 
-  const renderKpiCards = () => (
-    <Grid container spacing={3} mb={4}>
-      {mockKpiData.map((kpi) => {
-        const Icon = kpi.icon;
-        const isPositive = kpi.trend.startsWith('+');
-        return (
-          <Grid item xs={12} sm={6} md={3} key={kpi.label}>
-            <Card
-              sx={{
-                borderRadius: 3,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                transition: 'transform 0.2s',
-                '&:hover': { transform: 'translateY(-4px)' },
-              }}
-            >
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Box
-                    sx={{
-                      bgcolor: kpi.color + '20',
-                      borderRadius: 2,
-                      p: 1,
-                      display: 'flex',
-                    }}
-                  >
-                    <Icon sx={{ color: kpi.color, fontSize: 28 }} />
-                  </Box>
-                  <Chip
-                    label={kpi.trend}
-                    size="small"
-                    color={isPositive ? 'success' : 'error'}
-                    icon={isPositive ? <TrendingUpIcon /> : <TrendingDownIcon />}
-                  />
-                </Box>
-                <Typography variant="h4" fontWeight={700}>
-                  {kpi.value}
-                </Typography>
-                <Typography color="text.secondary" variant="body2">
-                  {kpi.label}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        );
-      })}
-    </Grid>
-  );
+  const [inventory, setInventory] = useState(null);
+  const [opsDynamics, setOpsDynamics] = useState(null);
+  const [warehousesSummary, setWarehousesSummary] = useState(null);
+  const [opsComparison, setOpsComparison] = useState(null);
+  const [invComparison, setInvComparison] = useState(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
 
-  const renderWarehousePerformance = () => (
-    <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
-      <Typography variant="h6" fontWeight={600} mb={3}>
-        Эффективность складов
-      </Typography>
-      <Grid container spacing={3}>
-        {mockWarehouseTurnover.map((warehouse) => (
-          <Grid item xs={12} md={4} key={warehouse.name}>
-            <Card variant="outlined">
-              <CardContent>
-                <Typography variant="subtitle1" fontWeight={600} mb={2}>
-                  {warehouse.name}
-                </Typography>
-                <Box mb={2}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Операций: {warehouse.operations}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-                    <Typography variant="body2">Заполненность</Typography>
-                    <Typography variant="body2" fontWeight={600}>
-                      {warehouse.utilization}%
-                    </Typography>
-                  </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={warehouse.utilization}
-                    sx={{ height: 8, borderRadius: 1, mb: 2 }}
-                  />
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-                    <Typography variant="body2">Эффективность</Typography>
-                    <Typography variant="body2" fontWeight={600}>
-                      {warehouse.efficiency}%
-                    </Typography>
-                  </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={warehouse.efficiency}
-                    color="success"
-                    sx={{ height: 8, borderRadius: 1 }}
-                  />
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
-    </Paper>
-  );
+  const dateRange = useMemo(() => {
+    const days = PERIODS.find((p) => p.value === period)?.days || 30;
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - days + 1);
+    return { startDate: formatDateIso(start), endDate: formatDateIso(end) };
+  }, [period]);
 
-  const renderOperationsByType = () => (
-    <Paper sx={{ p: 3, borderRadius: 3 }}>
-      <Typography variant="h6" fontWeight={600} mb={3}>
-        Операции по типам
-      </Typography>
-      <Box>
-        {mockOperationsByType.map((op) => (
-          <Box key={op.type} sx={{ mb: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="body2">{op.type}</Typography>
-              <Typography variant="body2" fontWeight={600}>
-                {op.count} ({op.percentage}%)
-              </Typography>
-            </Box>
-            <Box sx={{ position: 'relative', height: 32, bgcolor: '#f5f5f5', borderRadius: 1, overflow: 'hidden' }}>
-              <Box
-                sx={{
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  height: '100%',
-                  width: `${op.percentage}%`,
-                  bgcolor: op.color,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'flex-end',
-                  px: 1,
-                  transition: 'width 0.5s ease',
-                }}
-              >
-                <Typography sx={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>
-                  {op.count}
-                </Typography>
-              </Box>
-            </Box>
-          </Box>
-        ))}
-      </Box>
-    </Paper>
-  );
+  const loadOverview = useCallback(async () => {
+    setOverviewLoading(true);
+    const tasks = [
+      analyticsService.getInventoryAnalytics().catch((e) => ({ __err: e.message })),
+      analyticsService.getOperationsDynamics(dateRange.startDate, dateRange.endDate).catch((e) => ({ __err: e.message })),
+      analyticsService.getOperationsComparison(dateRange.startDate, dateRange.endDate).catch((e) => ({ __err: e.message })),
+      analyticsService.getInventoryComparison(dateRange.startDate, dateRange.endDate).catch((e) => ({ __err: e.message })),
+    ];
+    if (orgId) {
+      tasks.push(analyticsService.getWarehousesOrgSummary(orgId).catch((e) => ({ __err: e.message })));
+    } else {
+      tasks.push(Promise.resolve(null));
+    }
+    const [inv, ops, opsCmp, invCmp, whs] = await Promise.all(tasks);
 
-  const renderDailyOperationsChart = () => (
-    <Paper sx={{ p: 3, borderRadius: 3 }}>
-      <Typography variant="h6" fontWeight={600} mb={3}>
-        Загруженность по дням недели
-      </Typography>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        {mockDailyOperations.map((item) => {
-          const maxOps = Math.max(...mockDailyOperations.map((d) => d.operations));
-          const percentage = (item.operations / maxOps) * 100;
-          return (
-            <Box key={item.day} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Typography sx={{ minWidth: 40, fontSize: 14, fontWeight: 600 }}>
-                {item.day}
-              </Typography>
-              <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box
-                  sx={{
-                    bgcolor: '#1976d2',
-                    height: 36,
-                    borderRadius: 1,
-                    width: `${percentage}%`,
-                    minWidth: 60,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-end',
-                    px: 2,
-                    transition: 'width 0.5s ease',
-                  }}
-                >
-                  <Typography sx={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>
-                    {item.operations}
-                  </Typography>
-                </Box>
-              </Box>
-            </Box>
-          );
-        })}
-      </Box>
-    </Paper>
-  );
+    if (inv && !inv.__err) setInventory(inv);
+    else if (inv?.__err) notify(`Аналитика остатков: ${inv.__err}`, 'error');
 
-  const renderOrderFulfillment = () => (
-    <Paper sx={{ p: 3, borderRadius: 3 }}>
-      <Typography variant="h6" fontWeight={600} mb={3}>
-        Выполнение заказов
-      </Typography>
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={3}>
-          <Card variant="outlined">
-            <CardContent sx={{ textAlign: 'center' }}>
-              <CheckCircleIcon sx={{ fontSize: 48, color: '#2e7d32', mb: 1 }} />
-              <Typography variant="h4" fontWeight={700} color="#2e7d32">
-                {mockOrderFulfillment.onTime}%
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Вовремя
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <Card variant="outlined">
-            <CardContent sx={{ textAlign: 'center' }}>
-              <TimerIcon sx={{ fontSize: 48, color: '#ed6c02', mb: 1 }} />
-              <Typography variant="h4" fontWeight={700} color="#ed6c02">
-                {mockOrderFulfillment.delayed}%
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Задержки
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <Card variant="outlined">
-            <CardContent sx={{ textAlign: 'center' }}>
-              <WarningIcon sx={{ fontSize: 48, color: '#d32f2f', mb: 1 }} />
-              <Typography variant="h4" fontWeight={700} color="#d32f2f">
-                {mockOrderFulfillment.critical}%
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Критические
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <Card variant="outlined">
-            <CardContent sx={{ textAlign: 'center' }}>
-              <SpeedIcon sx={{ fontSize: 48, color: '#1976d2', mb: 1 }} />
-              <Typography variant="h4" fontWeight={700} color="#1976d2">
-                {mockOrderFulfillment.avgTime}ч
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Среднее время
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-      <Alert severity="success" sx={{ mt: 2 }}>
-        Целевое время: {mockOrderFulfillment.target}ч | Текущий показатель лучше целевого на{' '}
-        {((mockOrderFulfillment.target - mockOrderFulfillment.avgTime) / mockOrderFulfillment.target * 100).toFixed(1)}%
-      </Alert>
-    </Paper>
-  );
+    if (ops && !ops.__err) setOpsDynamics(ops);
+    else if (ops?.__err) notify(`Динамика операций: ${ops.__err}`, 'error');
 
-  const renderWarehouseOperationsChart = () => {
-    const data = mockWarehouseOperations[period];
-    const labels = periodLabels[period];
-    const periodCount = labels.length;
+    if (opsCmp && !opsCmp.__err) setOpsComparison(opsCmp);
+    else setOpsComparison(null);
 
-    return (
-      <Paper sx={{ p: 3, borderRadius: 3 }}>
-        <Typography variant="h6" fontWeight={600} mb={3}>
-          Динамика операций по складам
-        </Typography>
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Склад</TableCell>
-                {labels.map((label, idx) => (
-                  <TableCell key={idx} align="center">
-                    {label}
-                  </TableCell>
-                ))}
-                <TableCell align="center">Итого</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {data.map((wh) => {
-                const values = [];
-                for (let i = 1; i <= periodCount; i++) {
-                  values.push(wh[`period${i}`]);
-                }
-                const total = values.reduce((sum, val) => sum + val, 0);
+    if (invCmp && !invCmp.__err) setInvComparison(invCmp);
+    else setInvComparison(null);
 
-                return (
-                  <TableRow key={wh.warehouse}>
-                    <TableCell>
-                      <Typography fontWeight={600}>{wh.warehouse}</Typography>
-                    </TableCell>
-                    {values.map((val, idx) => (
-                      <TableCell key={idx} align="center">
-                        <Chip label={val} size="small" color="primary" variant="outlined" />
-                      </TableCell>
-                    ))}
-                    <TableCell align="center">
-                      <Chip label={total} size="small" color="success" />
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
-    );
-  };
+    if (whs && !whs.__err) setWarehousesSummary(whs);
 
-  const renderEmployeePerformance = () => (
-    <Paper sx={{ p: 3, borderRadius: 3 }}>
-      <Typography variant="h6" fontWeight={600} mb={2}>
-        Производительность сотрудников
-      </Typography>
-      <TableContainer>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Сотрудник</TableCell>
-              <TableCell align="right">Операций</TableCell>
-              <TableCell align="right">Среднее время, мин</TableCell>
-              <TableCell align="right">Эффективность</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {mockEmployeePerformance.map((emp) => (
-              <TableRow key={emp.name}>
-                <TableCell>{emp.name}</TableCell>
-                <TableCell align="right">{emp.operations}</TableCell>
-                <TableCell align="right">{emp.avgTime}</TableCell>
-                <TableCell align="right">
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                    <Box sx={{ width: 100, mr: 1 }}>
-                      <LinearProgress
-                        variant="determinate"
-                        value={emp.efficiency}
-                        color={emp.efficiency >= 90 ? 'success' : 'warning'}
-                        sx={{ height: 6, borderRadius: 1 }}
-                      />
-                    </Box>
-                    <Typography variant="body2" fontWeight={600}>
-                      {emp.efficiency}%
-                    </Typography>
-                  </Box>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Paper>
-  );
+    setOverviewLoading(false);
+  }, [dateRange.startDate, dateRange.endDate, orgId, notify]);
+
+  useEffect(() => { loadOverview(); }, [loadOverview]);
+
+  const totalOpsInPeriod = useMemo(() => {
+    if (!opsDynamics?.operationsByType) return null;
+    return Object.values(opsDynamics.operationsByType).reduce((s, v) => s + Number(v || 0), 0);
+  }, [opsDynamics]);
 
   return (
     <Box sx={{ width: '100%', pt: 4, pb: 6, bgcolor: '#f5f5f5', minHeight: '100vh' }}>
-      <Box sx={{ width: '100%', maxWidth: 1400, mx: 'auto', px: { xs: 2, md: 3 } }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" fontWeight={700}>
-            Аналитика и отчетность
-          </Typography>
+      <Box sx={{ width: '100%', maxWidth: 1440, mx: 'auto', px: { xs: 2, md: 3 } }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+          <Typography variant="h4" fontWeight={700}>Аналитика и отчётность</Typography>
           <FormControl size="small" sx={{ minWidth: 160 }}>
             <InputLabel>Период</InputLabel>
             <Select
@@ -479,59 +200,540 @@ const AnalyticsPage = () => {
               variant="outlined"
               onChange={(e) => setPeriod(e.target.value)}
             >
-              {periods.map((p) => (
-                <MenuItem key={p.value} value={p.value}>
-                  {p.label}
-                </MenuItem>
+              {PERIODS.map((p) => (
+                <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
               ))}
             </Select>
           </FormControl>
-        </Box>
+        </Stack>
 
-        {/* KPI карточки */}
-        {renderKpiCards()}
+        {}
+        <Grid container spacing={3} mb={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <KPICard
+              icon={InventoryIcon}
+              label="Всего на складах"
+              value={inventory?.totalQuantity}
+              color="#1976d2"
+              loading={overviewLoading}
+              trend={invComparison?.totalQuantityTrendPercent}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <KPICard
+              icon={TrendingUpIcon}
+              label="Уникальных позиций"
+              value={inventory?.uniqueProducts}
+              color="#2e7d32"
+              loading={overviewLoading}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <KPICard
+              icon={ReceiptIcon}
+              label={`Операции · ${PERIODS.find((p) => p.value === period)?.label.toLowerCase()}`}
+              value={totalOpsInPeriod}
+              color="#ed6c02"
+              loading={overviewLoading}
+              trend={opsComparison?.deltaPercent}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <KPICard
+              icon={StorefrontIcon}
+              label="Доступно"
+              value={inventory?.availableQuantity}
+              color="#9c27b0"
+              loading={overviewLoading}
+              trend={invComparison?.availableQuantityTrendPercent}
+            />
+          </Grid>
+        </Grid>
 
-        {/* Вкладки */}
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-          <Paper sx={{ borderRadius: 3, display: 'inline-block' }}>
-            <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-              <Tab label="Обзор" />
-              <Tab label="Операции" />
-              <Tab label="Сотрудники" />
-            </Tabs>
-          </Paper>
-        </Box>
+        {}
+        <Paper sx={{ borderRadius: 3, mb: 3 }}>
+          <Tabs
+            value={tab}
+            onChange={(_, v) => setTab(v)}
+            sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
+          >
+            <Tab label="Обзор" />
+            <Tab label="Операции" />
+            <Tab label="Сотрудники" />
+          </Tabs>
 
-        {/* Вкладка: Обзор */}
-        {tabValue === 0 && (
-          <Box>
-            {renderWarehousePerformance()}
-            <Grid container spacing={3} mb={3}>
-              <Grid item xs={12} md={6}>
-                {renderOperationsByType()}
-              </Grid>
-              <Grid item xs={12} md={6}>
-                {renderDailyOperationsChart()}
-              </Grid>
-            </Grid>
-            {renderOrderFulfillment()}
-          </Box>
-        )}
-
-        {/* Вкладка: Операции */}
-        {tabValue === 1 && (
-          <Box>
-            {renderWarehouseOperationsChart()}
-          </Box>
-        )}
-
-        {/* Вкладка: Сотрудники */}
-        {tabValue === 2 && (
-          <Box>
-            {renderEmployeePerformance()}
-          </Box>
-        )}
+          {tab === 0 && (
+            <OverviewTab
+              loading={overviewLoading}
+              warehousesSummary={warehousesSummary}
+              opsDynamics={opsDynamics}
+              periodLabel={PERIODS.find((p) => p.value === period)?.label}
+            />
+          )}
+          {tab === 1 && (
+            <OperationsTab dateRange={dateRange} />
+          )}
+          {tab === 2 && (
+            <EmployeesTab orgId={orgId} />
+          )}
+        </Paper>
       </Box>
+    </Box>
+  );
+};
+
+const OverviewTab = ({ loading, warehousesSummary, opsDynamics, periodLabel }) => {
+
+  const warehousesList = useMemo(() => {
+    if (!warehousesSummary) return null;
+    if (Array.isArray(warehousesSummary)) return warehousesSummary;
+    if (Array.isArray(warehousesSummary.warehouses)) return warehousesSummary.warehouses;
+    return null;
+  }, [warehousesSummary]);
+
+  const opsByType = useMemo(() => {
+    if (!opsDynamics?.operationsByType) return [];
+    const total = Object.values(opsDynamics.operationsByType).reduce((s, v) => s + Number(v || 0), 0) || 1;
+    return Object.entries(opsDynamics.operationsByType)
+      .map(([type, count]) => {
+        const meta = opMeta(type);
+        return {
+          type,
+          label: meta.label,
+          color: meta.color,
+          count: Number(count),
+          percentage: Math.round((Number(count) / total) * 100),
+        };
+      })
+      .sort((a, b) => b.count - a.count);
+  }, [opsDynamics]);
+
+  const dailyOps = useMemo(() => {
+    if (!opsDynamics?.dailyOperations) return [];
+    return Object.entries(opsDynamics.dailyOperations)
+      .map(([date, count]) => ({ date, count: Number(count) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [opsDynamics]);
+
+  const maxDaily = useMemo(() => Math.max(...dailyOps.map((d) => d.count), 1), [dailyOps]);
+
+  return (
+    <Box sx={{ p: 3 }}>
+      {}
+      <Typography variant="h6" fontWeight={600} mb={2}>Эффективность складов</Typography>
+      {loading ? (
+        <Grid container spacing={2} mb={4}>
+          {[0, 1, 2].map((i) => (
+            <Grid size={{ xs: 12, md: 4 }} key={i}>
+              <Skeleton variant="rounded" height={140} />
+            </Grid>
+          ))}
+        </Grid>
+      ) : !warehousesList || warehousesList.length === 0 ? (
+        <Box mb={4}>
+          <EmptyState title="Нет данных о складах" sx={{ py: 4 }} />
+        </Box>
+      ) : (
+        <Grid container spacing={2} mb={4}>
+          {warehousesList.map((w, i) => {
+            const fill = Number(w.fillPercentage ?? w.utilization ?? 0);
+            return (
+              <Grid size={{ xs: 12, md: 4 }} key={w.warehouseId || w.id || i}>
+                <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                  <CardContent>
+                    <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
+                      <Box sx={{ bgcolor: '#e3f2fd', color: '#1976d2', p: 1, borderRadius: 2, display: 'inline-flex' }}>
+                        <WarehouseIcon />
+                      </Box>
+                      <Typography variant="subtitle1" fontWeight={700} noWrap>
+                        {w.name || '—'}
+                      </Typography>
+                    </Stack>
+                    <Stack spacing={1}>
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="body2" color="text.secondary">Уникальных товаров</Typography>
+                        <Typography variant="body2" fontWeight={600}>{w.uniqueProducts ?? '—'}</Typography>
+                      </Stack>
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="body2" color="text.secondary">Объём</Typography>
+                        <Typography variant="body2" fontWeight={600}>{w.totalQuantity ?? '—'}</Typography>
+                      </Stack>
+                      <Box>
+                        <Stack direction="row" justifyContent="space-between" mb={0.5}>
+                          <Typography variant="body2" color="text.secondary">Заполненность</Typography>
+                          <Typography variant="body2" fontWeight={700}>{fill}%</Typography>
+                        </Stack>
+                        <LinearProgress
+                          variant="determinate"
+                          value={Math.min(fill, 100)}
+                          sx={{ height: 8, borderRadius: 1 }}
+                          color={fill > 90 ? 'error' : fill > 70 ? 'warning' : 'primary'}
+                        />
+                      </Box>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            );
+          })}
+        </Grid>
+      )}
+
+      <Grid container spacing={3}>
+        {}
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper variant="outlined" sx={{ p: 3, borderRadius: 3, height: '100%' }}>
+            <Typography variant="subtitle1" fontWeight={700} mb={1}>Операции по типам</Typography>
+            <Typography variant="caption" color="text.secondary" mb={2} display="block">
+              За {(periodLabel || '').toLowerCase()}
+            </Typography>
+            {loading ? (
+              <Stack spacing={2}>
+                {[0, 1, 2, 3].map((i) => <Skeleton key={i} height={32} />)}
+              </Stack>
+            ) : opsByType.length === 0 ? (
+              <EmptyState title="За период операций нет" sx={{ py: 4 }} />
+            ) : (
+              <Stack spacing={2}>
+                {opsByType.map((op) => (
+                  <Box key={op.type}>
+                    <Stack direction="row" justifyContent="space-between" mb={0.5}>
+                      <Typography variant="body2">{op.label}</Typography>
+                      <Typography variant="body2" fontWeight={600}>
+                        {op.count} ({op.percentage}%)
+                      </Typography>
+                    </Stack>
+                    <Box sx={{ position: 'relative', height: 8, bgcolor: '#f0f0f0', borderRadius: 1, overflow: 'hidden' }}>
+                      <Box sx={{
+                        position: 'absolute', left: 0, top: 0, height: '100%',
+                        width: `${op.percentage}%`,
+                        bgcolor: op.color,
+                        transition: 'width 0.5s ease',
+                      }} />
+                    </Box>
+                  </Box>
+                ))}
+              </Stack>
+            )}
+          </Paper>
+        </Grid>
+
+        {}
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper variant="outlined" sx={{ p: 3, borderRadius: 3, height: '100%' }}>
+            <Typography variant="subtitle1" fontWeight={700} mb={2}>Загруженность по дням</Typography>
+            {loading ? (
+              <Stack spacing={1}>
+                {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} height={28} />)}
+              </Stack>
+            ) : dailyOps.length === 0 ? (
+              <EmptyState title="Нет данных за период" sx={{ py: 4 }} />
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 320, overflowY: 'auto' }}>
+                {dailyOps.map((d) => {
+                  const pct = (d.count / maxDaily) * 100;
+                  return (
+                    <Box key={d.date} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Typography sx={{ minWidth: 90, fontSize: 13, color: 'text.secondary' }}>
+                        {dayLabelShort(d.date)}
+                      </Typography>
+                      <Box sx={{ flex: 1, position: 'relative', height: 24, bgcolor: '#f0f0f0', borderRadius: 1, overflow: 'hidden' }}>
+                        <Box sx={{
+                          position: 'absolute', left: 0, top: 0, height: '100%',
+                          width: `${pct}%`,
+                          minWidth: d.count > 0 ? 24 : 0,
+                          bgcolor: '#1976d2',
+                          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                          px: 1,
+                          transition: 'width 0.5s ease',
+                        }}>
+                          <Typography sx={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>
+                            {d.count > 0 ? d.count : ''}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Box>
+            )}
+          </Paper>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+};
+
+const OperationsTab = ({ dateRange }) => {
+  const { data: warehouses } = useWarehouses();
+  const { notify } = useSnackbar();
+
+  const [typeFilter, setTypeFilter] = useState('');
+  const [whFilter, setWhFilter] = useState('');
+  const [ops, setOps] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = {};
+      if (typeFilter) params.type = typeFilter;
+      if (whFilter) params.warehouseId = whFilter;
+      if (dateRange?.startDate) params.startDate = dateRange.startDate;
+      if (dateRange?.endDate) params.endDate = dateRange.endDate;
+      const data = await productService.getOperationsHistory(params);
+      const arr = Array.isArray(data) ? data : (data?.content || []);
+      arr.sort((a, b) => new Date(b.createdAt || b.operationDate || 0) - new Date(a.createdAt || a.operationDate || 0));
+      setOps(arr);
+    } catch (err) {
+      notify(err.message || 'Не удалось загрузить операции', 'error');
+      setOps([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [typeFilter, whFilter, dateRange?.startDate, dateRange?.endDate, notify]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const warehouseName = (id) => warehouses.find((w) => (w.warehouseId || w.id) === id)?.name || '—';
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Stack direction="row" spacing={2} mb={3} alignItems="center" flexWrap="wrap" useFlexGap>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
+          <InputLabel>Тип операции</InputLabel>
+          <Select
+            value={typeFilter}
+            label="Тип операции"
+            variant="outlined"
+            onChange={(e) => setTypeFilter(e.target.value)}
+          >
+            <MenuItem value="">Все типы</MenuItem>
+            {Object.entries(OP_TYPE).filter(([k]) => !['RECEIVE', 'WRITEOFF'].includes(k)).map(([k, v]) => (
+              <MenuItem key={k} value={k}>{v.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 240 }}>
+          <InputLabel>Склад</InputLabel>
+          <Select
+            value={whFilter}
+            label="Склад"
+            variant="outlined"
+            onChange={(e) => setWhFilter(e.target.value)}
+          >
+            <MenuItem value="">Все склады</MenuItem>
+            {warehouses.map((w) => (
+              <MenuItem key={w.warehouseId || w.id} value={w.warehouseId || w.id}>
+                {w.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <Button startIcon={<RefreshIcon />} onClick={load} disabled={loading}>
+          Обновить
+        </Button>
+        <Box sx={{ flex: 1 }} />
+        {!loading && ops && (
+          <Typography variant="body2" color="text.secondary">
+            Найдено: <b>{ops.length}</b>
+          </Typography>
+        )}
+      </Stack>
+
+      {loading ? (
+        <Stack spacing={1}>
+          {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} height={40} />)}
+        </Stack>
+      ) : !ops || ops.length === 0 ? (
+        <EmptyState
+          icon={HistoryIcon}
+          title="Операций по фильтрам не найдено"
+          description="Попробуйте сбросить фильтры или расширить период"
+        />
+      ) : (
+        <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 560 }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell>Дата</TableCell>
+                <TableCell>Тип</TableCell>
+                <TableCell>Склад</TableCell>
+                <TableCell>Товар</TableCell>
+                <TableCell align="right">Количество</TableCell>
+                <TableCell>Сотрудник</TableCell>
+                <TableCell>Operation ID</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {ops.map((op, i) => {
+                const meta = opMeta(op.operationType || op.type);
+                return (
+                  <TableRow key={op.operationId || i} hover>
+                    <TableCell>{formatDateTime(op.createdAt || op.operationDate || op.timestamp)}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={meta.label}
+                        size="small"
+                        sx={{ bgcolor: meta.color + '15', color: meta.color, fontWeight: 600 }}
+                      />
+                    </TableCell>
+                    <TableCell>{warehouseName(op.warehouseId)}</TableCell>
+                    <TableCell>{op.productName || (op.productId ? String(op.productId).slice(0, 8) + '…' : '—')}</TableCell>
+                    <TableCell align="right">{op.quantity ?? '—'}</TableCell>
+                    <TableCell>{op.userName || (op.userId ? String(op.userId).slice(0, 8) + '…' : '—')}</TableCell>
+                    <TableCell>
+                      <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                        {op.operationId ? String(op.operationId).slice(0, 8) + '…' : '—'}
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Box>
+  );
+};
+
+const EmployeesTab = ({ orgId }) => {
+  const user = useSelector(selectUser);
+  const isDirector = user?.role === 'DIRECTOR';
+  const { data: employees } = useEmployees();
+  const { notify } = useSnackbar();
+
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!orgId || !isDirector) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const data = await analyticsService.getEmployeesAnalytics(orgId);
+      const arr = Array.isArray(data) ? data : (data?.employees || []);
+      setAnalytics(arr);
+    } catch (err) {
+      notify(err.message || 'Не удалось загрузить аналитику сотрудников', 'error');
+      setAnalytics([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [orgId, isDirector, notify]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const empMap = useMemo(() => {
+    const m = new Map();
+    employees.forEach((e) => m.set(e.userId, e));
+    return m;
+  }, [employees]);
+
+  const sortedAnalytics = useMemo(() => {
+    if (!analytics) return [];
+    const arr = [...analytics];
+    arr.sort((a, b) => {
+      const aOps = Number(a.operationsStats?.totalOperations || 0);
+      const bOps = Number(b.operationsStats?.totalOperations || 0);
+      return bOps - aOps;
+    });
+    return arr;
+  }, [analytics]);
+
+  if (!isDirector) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="info">
+          Аналитика по сотрудникам доступна только директору.
+        </Alert>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h6" fontWeight={600}>Аналитика по сотрудникам</Typography>
+        <Button startIcon={<RefreshIcon />} onClick={load} disabled={loading}>
+          Обновить
+        </Button>
+      </Stack>
+
+      {loading ? (
+        <Stack spacing={1}>
+          {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} height={48} />)}
+        </Stack>
+      ) : !sortedAnalytics || sortedAnalytics.length === 0 ? (
+        <EmptyState title="Нет данных по сотрудникам" />
+      ) : (
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Сотрудник</TableCell>
+                <TableCell>Роль</TableCell>
+                <TableCell align="right">В компании</TableCell>
+                <TableCell align="right">Всего операций</TableCell>
+                <TableCell>Разбивка по типам</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {sortedAnalytics.map((a) => {
+                const emp = empMap.get(a.userId);
+                const stats = a.operationsStats || {};
+                const total = Number(stats.totalOperations || 0);
+                const breakdown = stats.byType || stats.operationsByType || null;
+                return (
+                  <TableRow key={a.userId}>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={600}>
+                        {emp?.username || (a.userId ? String(a.userId).slice(0, 8) + '…' : '—')}
+                      </Typography>
+                      {emp?.email && (
+                        <Typography variant="caption" color="text.secondary">{emp.email}</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Chip label={ROLE_LABEL[a.role] || a.role} size="small" />
+                    </TableCell>
+                    <TableCell align="right">
+                      {a.daysWorked != null ? `${a.daysWorked} дн.` : '—'}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" fontWeight={total > 0 ? 700 : 400}>
+                        {total}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      {breakdown && typeof breakdown === 'object' && Object.keys(breakdown).length > 0 ? (
+                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                          {Object.entries(breakdown).map(([type, count]) => {
+                            const meta = opMeta(type);
+                            return (
+                              <Chip
+                                key={type}
+                                label={`${meta.label}: ${count}`}
+                                size="small"
+                                sx={{ bgcolor: meta.color + '15', color: meta.color }}
+                              />
+                            );
+                          })}
+                        </Stack>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">—</Typography>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
     </Box>
   );
 };

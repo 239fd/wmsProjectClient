@@ -1,95 +1,237 @@
-import React, { useState, useEffect } from 'react';
-import { Box, Typography, Paper, List, ListItem, ListItemText, Button, Stack, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Box, Typography, Paper, List, ListItem, ListItemText, Button, Stack,
+  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
+  CircularProgress, Alert, Chip, Divider
+} from '@mui/material';
+import LogoutIcon from '@mui/icons-material/Logout';
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
+import { useDispatch } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import { logout, resetAuth } from '../store/slices/authSlice';
+import profileService from '../services/profileService';
+import { useSnackbar } from '../context/SnackbarContext';
+import EmptyState from '../components/shared/EmptyState';
+import { ListSkeleton } from '../components/shared/LoadingSkeleton';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
 
-const sessions = [
-  { id: 1, device: 'Chrome', ip: '192.168.1.10', date: '2025-10-16', time: '14:23', location: 'Минск, Беларусь', active: true },
-  { id: 2, device: 'Safari', ip: '192.168.1.11', date: '2025-10-15', time: '09:10', location: 'Барановичи, Беларусь', active: false },
-  { id: 3, device: 'Edge', ip: '192.168.1.12', date: '2025-10-10', time: '18:45', location: 'Гродно, Беларусь', active: false },
-  { id: 4, device: 'Firefox', ip: '192.168.1.13', date: '2025-10-09', time: '12:30', location: 'Брест, Беларусь', active: false },
-];
+const formatDateTime = (iso) => {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return `${d.toLocaleDateString('ru-RU')} ${d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+  } catch {
+    return iso;
+  }
+};
 
 const SettingsPage = () => {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { notify } = useSnackbar();
+
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [terminatingId, setTerminatingId] = useState(null);
   const [openDelete, setOpenDelete] = useState(false);
   const [deleteTimer, setDeleteTimer] = useState(10);
-  const [deleteEnabled, setDeleteEnabled] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const loadSessions = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await profileService.getSessions();
+
+      const list = Array.isArray(data) ? data : (data?.content || []);
+      setSessions(list);
+    } catch (err) {
+      setError(err.message || 'Не удалось загрузить сессии');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let timer;
-    if (openDelete && deleteTimer > 0) {
-      timer = setTimeout(() => setDeleteTimer(deleteTimer - 1), 1000);
-    } else if (openDelete && deleteTimer === 0) {
-      setDeleteEnabled(true);
-    }
-    return () => clearTimeout(timer);
-  }, [openDelete, deleteTimer]);
+    loadSessions();
+  }, [loadSessions]);
 
-  const handleTerminate = (id, isActive) => {
-    if (isActive) {
-      alert('Выход из аккаунта (заглушка)');
-    } else {
-      alert(`Сессия ${id} завершена (заглушка)`);
+  useEffect(() => {
+    if (!openDelete) return undefined;
+    setDeleteTimer(10);
+    const id = setInterval(() => {
+      setDeleteTimer((t) => (t > 0 ? t - 1 : 0));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [openDelete]);
+
+  const handleTerminate = async (sessionId) => {
+    setTerminatingId(sessionId);
+    try {
+      await profileService.terminateSession(sessionId);
+      notify('Сессия завершена');
+      await loadSessions();
+    } catch (err) {
+      notify(err.message || 'Не удалось завершить сессию', 'error');
+    } finally {
+      setTerminatingId(null);
     }
   };
-  const handleDeleteAccount = () => {
-    setOpenDelete(true);
-    setDeleteTimer(10);
-    setDeleteEnabled(false);
+
+  const handleTerminateAll = async () => {
+    setTerminatingId('all');
+    try {
+      await profileService.terminateAllSessions();
+      notify('Все остальные сессии завершены');
+      await loadSessions();
+    } catch (err) {
+      notify(err.message || 'Не удалось завершить сессии', 'error');
+    } finally {
+      setTerminatingId(null);
+    }
   };
-  const handleDeleteConfirm = () => {
-    setOpenDelete(false);
-    alert('Аккаунт удалён (заглушка)');
+
+  const handleLogout = async () => {
+    await dispatch(logout());
+    navigate('/login', { replace: true });
   };
-  const handleDeleteCancel = () => {
-    setOpenDelete(false);
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    try {
+      await profileService.deleteAccount();
+
+      dispatch(resetAuth());
+      notify('Аккаунт удалён');
+      setTimeout(() => navigate('/', { replace: true }), 800);
+    } catch (err) {
+      notify(err.message || 'Не удалось удалить аккаунт', 'error');
+      setDeleting(false);
+      setOpenDelete(false);
+    }
   };
 
   return (
-    <Box maxWidth={600} mx="auto" mt={4}>
+    <Box maxWidth={680} mx="auto" mt={4}>
+      <Typography variant="h4" fontWeight={700} mb={3}>
+        Настройки
+      </Typography>
+
+      <Paper sx={{ p: 4, borderRadius: 4, mb: 3 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
+          <Typography variant="h6" fontWeight={700}>
+            Активные сессии
+          </Typography>
+          {sessions.length > 1 && (
+            <Button
+              size="small"
+              color="error"
+              onClick={handleTerminateAll}
+              disabled={terminatingId === 'all'}
+            >
+              {terminatingId === 'all' ? <CircularProgress size={16} /> : 'Завершить все остальные'}
+            </Button>
+          )}
+        </Stack>
+
+        {loading ? (
+          <ListSkeleton rows={3} />
+        ) : error ? (
+          <Alert severity="error" action={
+            <Button color="inherit" size="small" onClick={loadSessions}>Повторить</Button>
+          }>
+            {error}
+          </Alert>
+        ) : sessions.length === 0 ? (
+          <EmptyState title="Активных сессий нет" sx={{ py: 4 }} />
+        ) : (
+          <List disablePadding>
+            {sessions.map((session) => {
+              const sessionId = session.sessionId || session.id;
+              const isCurrent = session.current === true || session.isCurrent === true;
+              const device = session.userAgent || session.device || 'Неизвестное устройство';
+              const ip = session.ipAddress || session.ip || '—';
+              const when = formatDateTime(session.loginTime || session.createdAt || session.date);
+              const location = session.location || null;
+
+              return (
+                <React.Fragment key={sessionId}>
+                  <ListItem
+                    disableGutters
+                    sx={{ py: 1.5 }}
+                    secondaryAction={
+                      isCurrent ? (
+                        <Chip label="Текущая" color="primary" size="small" />
+                      ) : (
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          onClick={() => handleTerminate(sessionId)}
+                          disabled={terminatingId === sessionId}
+                        >
+                          {terminatingId === sessionId ? <CircularProgress size={16} /> : 'Завершить'}
+                        </Button>
+                      )
+                    }
+                  >
+                    <ListItemText
+                      primary={device}
+                      secondary={
+                        <>
+                          IP: {ip} · {when}
+                          {location ? ` · ${location}` : ''}
+                        </>
+                      }
+                      primaryTypographyProps={{ fontWeight: isCurrent ? 600 : 400, noWrap: true }}
+                    />
+                  </ListItem>
+                  <Divider component="li" />
+                </React.Fragment>
+              );
+            })}
+          </List>
+        )}
+      </Paper>
+
       <Paper sx={{ p: 4, borderRadius: 4 }}>
-        <Typography variant="h5" fontWeight={700} mb={3}>
-          Активные сессии
+        <Typography variant="h6" fontWeight={700} mb={2}>
+          Аккаунт
         </Typography>
-        <List>
-          {sessions.map((session) => (
-            <ListItem key={session.id} sx={{ bgcolor: session.active ? 'primary.light' : 'inherit', borderRadius: 2, mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <ListItemText
-                primary={`${session.device} — ${session.ip}`}
-                secondary={`Дата: ${session.date} ${session.time} | ${session.location}${session.active ? ' (текущая)' : ''}`}
-              />
-              <Button
-                variant="outlined"
-                color="error"
-                size="small"
-                onClick={() => handleTerminate(session.id, session.active)}
-              >
-                Завершить
-              </Button>
-            </ListItem>
-          ))}
-        </List>
-        <Stack alignItems="center" mt={4}>
-          <Button variant="outlined" color="error" onClick={handleDeleteAccount}>
+        <Stack spacing={2} alignItems="flex-start">
+          <Button
+            variant="outlined"
+            startIcon={<LogoutIcon />}
+            onClick={handleLogout}
+          >
+            Выйти из аккаунта
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteForeverIcon />}
+            onClick={() => setOpenDelete(true)}
+          >
             Удалить аккаунт
           </Button>
+          <Typography variant="caption" color="text.secondary">
+            При удалении аккаунта все ваши данные будут стёрты безвозвратно.
+            Если вы директор — организация будет архивирована, склады удалены, сотрудники отвязаны.
+          </Typography>
         </Stack>
       </Paper>
-      <Dialog open={openDelete} onClose={handleDeleteCancel}>
-        <DialogTitle>Удаление аккаунта</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Вы уверены, что хотите удалить аккаунт? <br />
-            <b>Восстановить аккаунт будет невозможно.</b>
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleDeleteCancel} color="primary" autoFocus>
-            Отмена
-          </Button>
-          <Button onClick={handleDeleteConfirm} color="error" disabled={!deleteEnabled}>
-            {deleteEnabled ? 'Удалить' : `Удалить (${deleteTimer})`}
-          </Button>
-        </DialogActions>
-      </Dialog>
+
+      <ConfirmDialog
+        open={openDelete}
+        onClose={() => setOpenDelete(false)}
+        onConfirm={handleDeleteAccount}
+        busy={deleting || deleteTimer > 0}
+        title="Удаление аккаунта"
+        message={<>Вы уверены, что хотите удалить аккаунт? <b>Восстановить будет невозможно.</b></>}
+        confirmText={deleteTimer > 0 ? `Удалить (${deleteTimer})` : 'Удалить'}
+        confirmColor="error"
+      />
     </Box>
   );
 };

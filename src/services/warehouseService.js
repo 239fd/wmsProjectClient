@@ -1,9 +1,9 @@
-// Warehouse Service - сервис работы со складами
+
 import httpService from './httpService';
 import { API_ENDPOINTS } from '../config/api';
 
 const warehouseService = {
-  // Warehouses
+
   async getWarehouses() {
     return httpService.get(API_ENDPOINTS.WAREHOUSES.BASE);
   },
@@ -16,13 +16,13 @@ const warehouseService = {
     return httpService.get(API_ENDPOINTS.WAREHOUSES.BY_ID(id));
   },
 
-  async createWarehouse(warehouseData) {
-    // warehouseData: { name, address, orgId, responsibleUserId }
-    return httpService.post(API_ENDPOINTS.WAREHOUSES.BASE, warehouseData);
+  async createWarehouse(payload) {
+
+    return httpService.post(API_ENDPOINTS.WAREHOUSES.BASE, payload);
   },
 
-  async updateWarehouse(id, warehouseData) {
-    return httpService.put(API_ENDPOINTS.WAREHOUSES.BY_ID(id), warehouseData);
+  async updateWarehouse(id, payload) {
+    return httpService.put(API_ENDPOINTS.WAREHOUSES.BY_ID(id), payload);
   },
 
   async deleteWarehouse(id) {
@@ -33,7 +33,6 @@ const warehouseService = {
     return httpService.get(API_ENDPOINTS.WAREHOUSES.ANALYTICS);
   },
 
-  // Racks
   async getRacksByWarehouse(warehouseId) {
     return httpService.get(API_ENDPOINTS.RACKS.BY_WAREHOUSE(warehouseId));
   },
@@ -42,28 +41,42 @@ const warehouseService = {
     return httpService.get(API_ENDPOINTS.RACKS.BY_ID(id));
   },
 
-  async createRack(rackData) {
-    // rackData: { warehouseId, name, kind, ... specific fields based on kind }
-    return httpService.post(API_ENDPOINTS.RACKS.BASE, rackData);
-  },
+  async createRack(payload) {
 
-  async updateRack(id, rackData) {
-    return httpService.put(API_ENDPOINTS.RACKS.BY_ID(id), rackData);
+    return httpService.post(API_ENDPOINTS.RACKS.BASE, payload);
   },
 
   async deleteRack(id) {
     return httpService.delete(API_ENDPOINTS.RACKS.BY_ID(id));
   },
 
-  // Создание полок/ячеек внутри стеллажа
-  async createShelf(rackId, shelfData) {
-    return httpService.post(`${API_ENDPOINTS.RACKS.BY_ID(rackId)}/shelves`, shelfData);
+  async addShelf(rackId, payload) {
+
+    return httpService.post(API_ENDPOINTS.RACKS.SHELVES(rackId), { rackId, ...payload });
   },
 
-  async createCell(rackId, cellData) {
-    return httpService.post(`${API_ENDPOINTS.RACKS.BY_ID(rackId)}/cells`, cellData);
+  async addCell(rackId, payload) {
+
+    return httpService.post(API_ENDPOINTS.RACKS.CELLS(rackId), { rackId, ...payload });
+  },
+
+  async addFridge(rackId, payload) {
+
+    return httpService.post(API_ENDPOINTS.RACKS.FRIDGES(rackId), { rackId, ...payload });
+  },
+
+  async addPallet(rackId, payload) {
+
+    return httpService.post(API_ENDPOINTS.RACKS.PALLETS(rackId), { rackId, ...payload });
+  },
+
+  async getCell(cellId) {
+    return httpService.get(API_ENDPOINTS.RACKS.CELL_BY_ID(cellId));
+  },
+
+  async getSlotsByRack(rackId) {
+    return httpService.get(API_ENDPOINTS.RACKS.SLOTS(rackId));
   },
 };
 
 export default warehouseService;
-

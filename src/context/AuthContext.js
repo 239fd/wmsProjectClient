@@ -16,7 +16,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Загрузка пользователя при старте
+
   useEffect(() => {
     const storedUser = authService.getUser();
     if (storedUser && authService.isAuthenticated()) {
@@ -40,11 +40,26 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const register = useCallback(async (userData) => {
+  const registerDirector = useCallback(async (payload) => {
     try {
       setError(null);
       setLoading(true);
-      const response = await authService.register(userData);
+      const response = await authService.registerDirector(payload);
+      setUser(response.user);
+      return response;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const registerByInvitation = useCallback(async (payload) => {
+    try {
+      setError(null);
+      setLoading(true);
+      const response = await authService.registerByInvitation(payload);
       setUser(response.user);
       return response;
     } catch (err) {
@@ -61,7 +76,7 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
     } catch (err) {
       console.error('Logout error:', err);
-      // Всё равно очищаем состояние
+
       setUser(null);
     }
   }, []);
@@ -78,7 +93,8 @@ export const AuthProvider = ({ children }) => {
     error,
     isAuthenticated: !!user,
     login,
-    register,
+    registerDirector,
+    registerByInvitation,
     logout,
     updateUser,
     clearError: () => setError(null),

@@ -1,4 +1,4 @@
-// Экспорт всех сервисов
+
 export { default as httpService } from './httpService';
 export { default as authService } from './authService';
 export { default as profileService } from './profileService';

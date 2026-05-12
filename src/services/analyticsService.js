@@ -1,32 +1,47 @@
-// Analytics Service - сервис аналитики
+
 import httpService from './httpService';
 import { API_ENDPOINTS } from '../config/api';
 
 const analyticsService = {
-  async getStockAnalytics(params = {}) {
-    const queryParams = new URLSearchParams(params).toString();
-    const url = queryParams
-      ? `${API_ENDPOINTS.ANALYTICS.STOCK}?${queryParams}`
-      : API_ENDPOINTS.ANALYTICS.STOCK;
+
+  async getInventoryAnalytics() {
+    return httpService.get(API_ENDPOINTS.ANALYTICS.INVENTORY);
+  },
+
+  async getOperationsDynamics(startDate, endDate) {
+    const url = `${API_ENDPOINTS.ANALYTICS.OPERATIONS_DYNAMICS}?startDate=${startDate}&endDate=${endDate}`;
     return httpService.get(url);
   },
 
-  async getOperationsAnalytics(params = {}) {
-    const queryParams = new URLSearchParams(params).toString();
-    const url = queryParams
-      ? `${API_ENDPOINTS.ANALYTICS.OPERATIONS}?${queryParams}`
-      : API_ENDPOINTS.ANALYTICS.OPERATIONS;
+  async getOperationsComparison(startDate, endDate) {
+    const url = `${API_ENDPOINTS.ANALYTICS.OPERATIONS_COMPARE}?startDate=${startDate}&endDate=${endDate}`;
     return httpService.get(url);
   },
 
-  async getWarehouseLoadAnalytics() {
-    return httpService.get(API_ENDPOINTS.ANALYTICS.WAREHOUSE_LOAD);
+  async getInventoryComparison(startDate, endDate) {
+    const url = `${API_ENDPOINTS.ANALYTICS.INVENTORY_COMPARE}?startDate=${startDate}&endDate=${endDate}`;
+    return httpService.get(url);
   },
 
-  async getEmployeesAnalytics() {
-    return httpService.get(API_ENDPOINTS.ANALYTICS.EMPLOYEES);
+  async getOperationsSummary() {
+    return httpService.get(API_ENDPOINTS.ANALYTICS.OPERATIONS_SUMMARY);
+  },
+
+  async getAllWarehousesAnalytics() {
+    return httpService.get(API_ENDPOINTS.ANALYTICS.WAREHOUSES_ALL);
+  },
+
+  async getWarehouseAnalytics(warehouseId) {
+    return httpService.get(API_ENDPOINTS.ANALYTICS.WAREHOUSE_BY_ID(warehouseId));
+  },
+
+  async getWarehousesOrgSummary(orgId) {
+    return httpService.get(API_ENDPOINTS.ANALYTICS.WAREHOUSES_ORG_SUMMARY(orgId));
+  },
+
+  async getEmployeesAnalytics(orgId) {
+    return httpService.get(API_ENDPOINTS.ANALYTICS.EMPLOYEES_BY_ORG(orgId));
   },
 };
 
 export default analyticsService;
-

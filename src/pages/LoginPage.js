@@ -1,57 +1,50 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import {
   Box, Paper, Typography, TextField, Button, Divider, Stack,
-  CircularProgress, Snackbar, Alert
+  CircularProgress
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
+import { useForm } from 'react-hook-form';
+import { yupResolver } from '@hookform/resolvers/yup';
 import { login, clearError, selectAuthLoading, selectAuthError, selectIsAuthenticated } from '../store/slices/authSlice';
+import { loginSchema } from '../validation/schemas';
+import { useSnackbar } from '../context/SnackbarContext';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8765';
 
 const LoginPage = () => {
-  const [form, setForm] = useState({ email: '', password: '' });
-  const [toast, setToast] = useState({ open: false, message: '', severity: 'error' });
-
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { notify } = useSnackbar();
 
   const loading = useSelector(selectAuthLoading);
   const error = useSelector(selectAuthError);
   const isAuthenticated = useSelector(selectIsAuthenticated);
 
-  // Редирект при успешной авторизации
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm({
+    resolver: yupResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
+    mode: 'onTouched',
+  });
+
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/main');
-    }
+    if (isAuthenticated) navigate('/main');
   }, [isAuthenticated, navigate]);
 
-  // Показываем toast при ошибке
   useEffect(() => {
     if (error) {
-      setToast({ open: true, message: error, severity: 'error' });
+      notify(error, 'error');
       dispatch(clearError());
     }
-  }, [error, dispatch]);
+  }, [error, dispatch, notify]);
 
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!form.email || !form.password) {
-      setToast({ open: true, message: 'Введите email и пароль', severity: 'warning' });
-      return;
-    }
-
-    dispatch(login({ email: form.email, password: form.password }));
-  };
-
-  const handleCloseToast = () => {
-    setToast({ ...toast, open: false });
+  const onSubmit = (values) => {
+    dispatch(login({ email: values.email.trim(), password: values.password }));
   };
 
   const handleGoogleLogin = () => {
@@ -64,45 +57,32 @@ const LoginPage = () => {
 
   return (
     <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh" bgcolor="background.default">
-      <Snackbar
-        open={toast.open}
-        autoHideDuration={6000}
-        onClose={handleCloseToast}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-      >
-        <Alert onClose={handleCloseToast} severity={toast.severity} sx={{ width: '100%' }}>
-          {toast.message}
-        </Alert>
-      </Snackbar>
-
       <Paper elevation={3} sx={{ p: { xs: 3, md: 5 }, borderRadius: 4, minWidth: 340, maxWidth: 400, width: '100%' }}>
         <Typography variant="h5" color="text.primary" fontWeight={700} mb={2} align="center">
           Вход в систему
         </Typography>
-        <form onSubmit={handleSubmit} noValidate>
+        <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <Stack spacing={2}>
             <TextField
               label="Email"
-              name="email"
               type="email"
-              value={form.email}
-              onChange={handleChange}
               fullWidth
-              required
               autoFocus
               disabled={loading}
               autoComplete="email"
+              {...register('email')}
+              error={!!errors.email}
+              helperText={errors.email?.message}
             />
             <TextField
               label="Пароль"
-              name="password"
               type="password"
-              value={form.password}
-              onChange={handleChange}
               fullWidth
-              required
               disabled={loading}
               autoComplete="current-password"
+              {...register('password')}
+              error={!!errors.password}
+              helperText={errors.password?.message}
             />
             <Button
               type="submit"
@@ -154,4 +134,3 @@ const LoginPage = () => {
 };
 
 export default LoginPage;
-

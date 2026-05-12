@@ -1,19 +1,33 @@
 import React from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography } from '@mui/material';
+import {
+  Dialog, DialogTitle, DialogContent, DialogContentText,
+  DialogActions, Button, CircularProgress
+} from '@mui/material';
 
-const ConfirmDialog = ({ open, onClose, onConfirm, title, message }) => {
+const ConfirmDialog = ({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  message,
+  confirmText = 'Подтвердить',
+  cancelText = 'Отмена',
+  confirmColor = 'primary',
+  busy = false,
+  maxWidth = 'xs',
+}) => {
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <Dialog open={open} onClose={() => !busy && onClose?.()} maxWidth={maxWidth} fullWidth>
       <DialogTitle>{title}</DialogTitle>
       <DialogContent>
-        <Typography>{message}</Typography>
+        <DialogContentText component="div">{message}</DialogContentText>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} color="inherit">
-          Отмена
+        <Button onClick={onClose} disabled={busy} autoFocus>
+          {cancelText}
         </Button>
-        <Button onClick={onConfirm} variant="contained" color="error">
-          Подтвердить
+        <Button onClick={onConfirm} variant="contained" color={confirmColor} disabled={busy}>
+          {busy ? <CircularProgress size={20} color="inherit" /> : confirmText}
         </Button>
       </DialogActions>
     </Dialog>
@@ -21,4 +35,3 @@ const ConfirmDialog = ({ open, onClose, onConfirm, title, message }) => {
 };
 
 export default ConfirmDialog;
-
