@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api, { clearAuthData } from '../api';
 
-// Функция для безопасного парсинга JSON из localStorage
+
 const safeGetUser = () => {
   try {
     const user = localStorage.getItem('user');
@@ -13,18 +13,22 @@ const safeGetUser = () => {
   }
 };
 
-// ============ ASYNC THUNKS ============
 
-// Стандартный вход
+
+
 export const login = createAsyncThunk(
   'auth/login',
   async ({ email, password }, { rejectWithValue }) => {
     try {
       const response = await api.post('/api/auth/login', { email, password });
-      const { accessToken, refreshToken, user } = response.data;
+      const { accessToken, refreshToken } = response.data;
 
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('refreshToken', refreshToken);
+
+
+      const meResponse = await api.get('/api/auth/me');
+      const user = meResponse.data;
       localStorage.setItem('user', JSON.stringify(user));
 
       return { user, accessToken, refreshToken };
@@ -34,24 +38,25 @@ export const login = createAsyncThunk(
   }
 );
 
-// Стандартная регистрация (с ролью)
-export const register = createAsyncThunk(
-  'auth/register',
-  async ({ email, firstName, lastName, middleName, password, role, organizationCode }, { rejectWithValue }) => {
+
+export const registerDirector = createAsyncThunk(
+  'auth/registerDirector',
+  async ({ email, firstName, lastName, middleName, password }, { rejectWithValue }) => {
     try {
-      const response = await api.post('/api/auth/register', {
+      const response = await api.post('/api/auth/register/director', {
         email,
         firstName,
         lastName,
         middleName: middleName || null,
         password,
-        role,
-        organizationCode: organizationCode || null,
       });
-      const { accessToken, refreshToken, user } = response.data;
+      const { accessToken, refreshToken } = response.data;
 
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('refreshToken', refreshToken);
+
+      const meResponse = await api.get('/api/auth/me');
+      const user = meResponse.data;
       localStorage.setItem('user', JSON.stringify(user));
 
       return { user, accessToken, refreshToken };
@@ -61,23 +66,56 @@ export const register = createAsyncThunk(
   }
 );
 
-// Завершение OAuth регистрации (выбор роли)
+
+export const registerByInvitation = createAsyncThunk(
+  'auth/registerByInvitation',
+  async ({ invitationToken, email, firstName, lastName, middleName, password }, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/api/auth/register/invitation', {
+        invitationToken,
+        email,
+        firstName,
+        lastName,
+        middleName: middleName || null,
+        password,
+      });
+      const { accessToken, refreshToken } = response.data;
+
+      localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
+
+      const meResponse = await api.get('/api/auth/me');
+      const user = meResponse.data;
+      localStorage.setItem('user', JSON.stringify(user));
+
+      return { user, accessToken, refreshToken };
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+
 export const completeOAuthRegistration = createAsyncThunk(
   'auth/completeOAuthRegistration',
-  async ({ temporaryToken, role, organizationId, warehouseId }, { rejectWithValue }) => {
+  async ({ temporaryToken, role, organizationId, warehouseId, invitationToken }, { rejectWithValue }) => {
     try {
       const response = await api.post('/api/oauth/complete-registration', {
         temporaryToken,
-        role,
+        role: role || null,
         organizationId: organizationId || null,
         warehouseId: warehouseId || null,
+        invitationToken: invitationToken || null,
       });
-      const { accessToken, refreshToken, user } = response.data;
+      const { accessToken, refreshToken } = response.data;
 
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('refreshToken', refreshToken);
+
+
+      const meResponse = await api.get('/api/auth/me');
+      const user = meResponse.data;
       localStorage.setItem('user', JSON.stringify(user));
-      localStorage.removeItem('oauthRegistration'); // Очищаем временные данные
 
       return { user, accessToken, refreshToken };
     } catch (error) {
@@ -86,7 +124,7 @@ export const completeOAuthRegistration = createAsyncThunk(
   }
 );
 
-// Выход
+
 export const logout = createAsyncThunk(
   'auth/logout',
   async (_, { rejectWithValue }) => {
@@ -103,7 +141,7 @@ export const logout = createAsyncThunk(
   }
 );
 
-// Получение профиля
+
 export const fetchProfile = createAsyncThunk(
   'auth/fetchProfile',
   async (_, { rejectWithValue }) => {
@@ -116,7 +154,22 @@ export const fetchProfile = createAsyncThunk(
   }
 );
 
-// Обновление профиля
+
+export const bootstrapUser = createAsyncThunk(
+  'auth/bootstrapUser',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get('/api/auth/me');
+      const user = response.data;
+      localStorage.setItem('user', JSON.stringify(user));
+      return user;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+
 export const updateProfile = createAsyncThunk(
   'auth/updateProfile',
   async (profileData, { rejectWithValue }) => {
@@ -135,18 +188,16 @@ export const updateProfile = createAsyncThunk(
   }
 );
 
-// ============ INITIAL STATE ============
+
 const initialState = {
   user: safeGetUser(),
   accessToken: localStorage.getItem('accessToken'),
   isAuthenticated: !!localStorage.getItem('accessToken'),
   loading: false,
   error: null,
-  // Для OAuth регистрации (когда нужен выбор роли)
-  oauthRegistration: JSON.parse(localStorage.getItem('oauthRegistration') || 'null'),
 };
 
-// ============ SLICE ============
+
 const authSlice = createSlice({
   name: 'auth',
   initialState,
@@ -161,30 +212,19 @@ const authSlice = createSlice({
         localStorage.setItem('user', JSON.stringify(action.payload));
       }
     },
-    // Сохранить данные OAuth для завершения регистрации
-    setOAuthRegistration: (state, action) => {
-      state.oauthRegistration = action.payload;
-      if (action.payload) {
-        localStorage.setItem('oauthRegistration', JSON.stringify(action.payload));
-      } else {
-        localStorage.removeItem('oauthRegistration');
-      }
-    },
-    // Полная очистка состояния
+
     resetAuth: (state) => {
       clearAuthData();
-      localStorage.removeItem('oauthRegistration');
       state.user = null;
       state.accessToken = null;
       state.isAuthenticated = false;
       state.loading = false;
       state.error = null;
-      state.oauthRegistration = null;
     },
   },
   extraReducers: (builder) => {
     builder
-      // Login
+
       .addCase(login.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -201,24 +241,41 @@ const authSlice = createSlice({
         state.error = action.payload;
         state.isAuthenticated = false;
       })
-      // Register
-      .addCase(register.pending, (state) => {
+
+      .addCase(registerDirector.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(register.fulfilled, (state, action) => {
+      .addCase(registerDirector.fulfilled, (state, action) => {
         state.loading = false;
         state.user = action.payload.user;
         state.accessToken = action.payload.accessToken;
         state.isAuthenticated = true;
         state.error = null;
       })
-      .addCase(register.rejected, (state, action) => {
+      .addCase(registerDirector.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
         state.isAuthenticated = false;
       })
-      // Complete OAuth Registration
+
+      .addCase(registerByInvitation.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(registerByInvitation.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload.user;
+        state.accessToken = action.payload.accessToken;
+        state.isAuthenticated = true;
+        state.error = null;
+      })
+      .addCase(registerByInvitation.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.isAuthenticated = false;
+      })
+
       .addCase(completeOAuthRegistration.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -228,22 +285,20 @@ const authSlice = createSlice({
         state.user = action.payload.user;
         state.accessToken = action.payload.accessToken;
         state.isAuthenticated = true;
-        state.oauthRegistration = null;
         state.error = null;
       })
       .addCase(completeOAuthRegistration.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })
-      // Logout
+
       .addCase(logout.fulfilled, (state) => {
         state.user = null;
         state.accessToken = null;
         state.isAuthenticated = false;
-        state.oauthRegistration = null;
         state.error = null;
       })
-      // Fetch Profile
+
       .addCase(fetchProfile.pending, (state) => {
         state.loading = true;
       })
@@ -255,7 +310,19 @@ const authSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
-      // Update Profile
+
+      .addCase(bootstrapUser.fulfilled, (state, action) => {
+        state.user = action.payload;
+        state.isAuthenticated = true;
+      })
+      .addCase(bootstrapUser.rejected, (state) => {
+
+        clearAuthData();
+        state.user = null;
+        state.accessToken = null;
+        state.isAuthenticated = false;
+      })
+
       .addCase(updateProfile.pending, (state) => {
         state.loading = true;
       })
@@ -270,15 +337,14 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearError, setUser, setOAuthRegistration, resetAuth } = authSlice.actions;
+export const { clearError, setUser, resetAuth } = authSlice.actions;
 
-// ============ SELECTORS ============
+
 export const selectAuth = (state) => state.auth;
 export const selectUser = (state) => state.auth.user;
 export const selectIsAuthenticated = (state) => state.auth.isAuthenticated;
 export const selectAuthLoading = (state) => state.auth.loading;
 export const selectAuthError = (state) => state.auth.error;
-export const selectOAuthRegistration = (state) => state.auth.oauthRegistration;
 
 export default authSlice.reducer;
 

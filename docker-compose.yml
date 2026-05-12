@@ -97,7 +97,6 @@ services:
     networks:
       - wms-network
 
-  # Backend сервисы
   eureka-server:
     build:
       context: ./backend/eureka-server
@@ -218,7 +217,6 @@ services:
     networks:
       - wms-network
 
-  # Frontend
   client:
     build:
       context: ./client

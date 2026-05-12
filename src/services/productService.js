@@ -1,9 +1,9 @@
-// Product Service - сервис работы с товарами
+
 import httpService from './httpService';
 import { API_ENDPOINTS } from '../config/api';
 
 const productService = {
-  // Products
+
   async getProducts() {
     return httpService.get(API_ENDPOINTS.PRODUCTS.BASE);
   },
@@ -17,7 +17,7 @@ const productService = {
   },
 
   async createProduct(productData) {
-    // productData: { sku, name, description, categoryId, unit, shelfLifeDays, barcode }
+
     return httpService.post(API_ENDPOINTS.PRODUCTS.BASE, productData);
   },
 
@@ -29,7 +29,7 @@ const productService = {
     return httpService.delete(API_ENDPOINTS.PRODUCTS.BY_ID(id));
   },
 
-  // Batches
+
   async getBatchesByProduct(productId) {
     return httpService.get(API_ENDPOINTS.BATCHES.BY_PRODUCT(productId));
   },
@@ -38,24 +38,14 @@ const productService = {
     return httpService.post(API_ENDPOINTS.BATCHES.BASE, batchData);
   },
 
-  // Operations
+
   async receiveProduct(receiveData) {
-    // receiveData: { productId, warehouseId, rackId, placeId, quantity, batchNumber, expiryDate, pricePerUnit }
+
     return httpService.post(API_ENDPOINTS.OPERATIONS.RECEIVE, receiveData);
   },
 
-  async shipProduct(shipData) {
-    // shipData: { productId, warehouseId, quantity, documentNumber }
-    return httpService.post(API_ENDPOINTS.OPERATIONS.SHIP, shipData);
-  },
-
   async transferProduct(transferData) {
-    // transferData: { batchId, fromWarehouseId, fromRackId, toWarehouseId, toRackId, quantity }
     return httpService.post(API_ENDPOINTS.OPERATIONS.TRANSFER, transferData);
-  },
-
-  async reserveProduct(reserveData) {
-    return httpService.post(API_ENDPOINTS.OPERATIONS.RESERVE, reserveData);
   },
 
   async getOperationsHistory(params = {}) {
@@ -66,37 +56,64 @@ const productService = {
     return httpService.get(url);
   },
 
-  // Inventory
+
   async getInventory(warehouseId) {
     return httpService.get(API_ENDPOINTS.INVENTORY.BY_WAREHOUSE(warehouseId));
   },
 
-  async writeOff(writeOffData) {
-    // writeOffData: { batchId, quantity, reason, documentNumber }
-    return httpService.post(API_ENDPOINTS.INVENTORY.WRITEOFF, writeOffData);
+  async getInventoryByProduct(productId) {
+    return httpService.get(API_ENDPOINTS.INVENTORY.BY_PRODUCT(productId));
   },
 
-  async revaluate(revaluationData) {
-    // revaluationData: { batchId, oldPrice, newPrice, reason, documentNumber }
-    return httpService.post(API_ENDPOINTS.INVENTORY.REVALUATION, revaluationData);
+
+  async writeOff(payload) {
+
+    return httpService.post(API_ENDPOINTS.OPERATIONS.WRITE_OFF, payload);
   },
 
-  // Inventory Check (Инвентаризация)
-  async startInventoryCheck(warehouseId) {
-    return httpService.post(API_ENDPOINTS.INVENTORY_CHECK.START, { warehouseId });
+  async getMarkedForWriteOff(warehouseId) {
+    const qs = warehouseId ? `?warehouseId=${warehouseId}` : '';
+    return httpService.get(`${API_ENDPOINTS.OPERATIONS.WRITE_OFF_MARKED}${qs}`);
   },
 
-  async completeInventoryCheck(sessionId) {
-    return httpService.post(API_ENDPOINTS.INVENTORY_CHECK.COMPLETE, { sessionId });
+  async revaluate(payload) {
+
+    return httpService.post(API_ENDPOINTS.OPERATIONS.REVALUATE, payload);
   },
 
-  async recordInventoryCount(countData) {
-    // countData: { sessionId, batchId, countedQuantity }
-    return httpService.post(API_ENDPOINTS.INVENTORY_CHECK.COUNT, countData);
+
+  async startInventoryCheck({ warehouseId, userId, notes }) {
+    const qs = new URLSearchParams();
+    qs.set('warehouseId', warehouseId);
+    qs.set('userId', userId);
+    if (notes) qs.set('notes', notes);
+    return httpService.post(`${API_ENDPOINTS.INVENTORY_CHECK.START}?${qs.toString()}`, null);
   },
 
-  async getInventorySessions() {
-    return httpService.get(API_ENDPOINTS.INVENTORY_CHECK.SESSIONS);
+  async startInventoryCheckStructured(payload) {
+
+    return httpService.post(API_ENDPOINTS.INVENTORY_CHECK.START_STRUCTURED, payload);
+  },
+
+  async getInventorySession(sessionId) {
+    return httpService.get(API_ENDPOINTS.INVENTORY_CHECK.BY_ID(sessionId));
+  },
+
+  async recordInventoryCount(sessionId, { productId, cellId, actualQuantity, notes }) {
+    const qs = new URLSearchParams();
+    qs.set('productId', productId);
+    if (cellId) qs.set('cellId', cellId);
+    qs.set('actualQuantity', actualQuantity);
+    if (notes) qs.set('notes', notes);
+    return httpService.post(`${API_ENDPOINTS.INVENTORY_CHECK.RECORD(sessionId)}?${qs.toString()}`, null);
+  },
+
+  async completeInventoryCheck(sessionId, userId) {
+    return httpService.post(`${API_ENDPOINTS.INVENTORY_CHECK.COMPLETE(sessionId)}?userId=${userId}`, null);
+  },
+
+  async cancelInventoryCheck(sessionId) {
+    return httpService.post(API_ENDPOINTS.INVENTORY_CHECK.CANCEL(sessionId), null);
   },
 };
 

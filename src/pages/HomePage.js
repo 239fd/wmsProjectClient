@@ -100,7 +100,7 @@ const HomePage = () => {
                                 direction={section.imageLeft ? 'row-reverse' : 'row'}
                             >
                                 {section.image && (
-                                    <Grid item xs={12} md={6}
+                                    <Grid size={{ xs: 12, md: 6 }}
                                           sx={{display: 'flex', justifyContent: 'center', alignItems: 'center'}}>
                                         <Box sx={{width: '100%', display: 'flex', justifyContent: 'center'}}>
                                             <img
@@ -117,7 +117,7 @@ const HomePage = () => {
                                         </Box>
                                     </Grid>
                                 )}
-                                <Grid item xs={12} md={section.image ? 6 : 12} sx={{
+                                <Grid size={{ xs: 12, md: section.image ? 6 : 12 }} sx={{
                                     display: 'flex',
                                     flexDirection: 'column',
                                     justifyContent: 'center',

@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState} from 'react';
 import {
     AppBar,
     Toolbar,
@@ -9,36 +9,38 @@ import {
     MenuItem,
     Tooltip,
     Avatar,
-    FormControl,
-    InputLabel,
-    Select,
     Button,
     Drawer,
     List,
     ListItemButton,
     ListItemText,
-    Divider
+    Divider,
+    Chip
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import {useNavigate, useLocation} from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { logout, selectUser } from '../../store/slices/authSlice';
 
-const roleNav = {
-    Работник: [
-        {key: 'receive', label: 'Прием товара', path: '/main/receive'},
-        {key: 'ship', label: 'Отгрузка', path: '/main/ship'},
-    ],
-    Бухгалтер: [
-        {key: 'inventory', label: 'Инвентаризация', path: '/main/inventory'},
-        {key: 'revaluation', label: 'Переоценка', path: '/main/revaluation'},
-        {key: 'writeoff', label: 'Списание', path: '/main/writeoff'},
-    ],
-    Директор: [
-        {key: 'analytics', label: 'Аналитика', path: '/main/analytics'},
-        {key: 'employees', label: 'Сотрудники', path: '/main/employees'},
-        {key: 'organization', label: 'Организация', path: '/main/organization'},
-    ],
+const NAV_ITEMS = [
+    {key: 'receive',      label: 'Прием товара',    path: '/main/receive',      allowed: ['WORKER', 'DIRECTOR']},
+    {key: 'ship',         label: 'Отгрузка',        path: '/main/ship',         allowed: ['WORKER', 'DIRECTOR']},
+    {key: 'inventory',    label: 'Инвентаризация',  path: '/main/inventory',    allowed: 'ALL'},
+    {key: 'revaluation',  label: 'Переоценка',      path: '/main/revaluation',  allowed: ['ACCOUNTANT', 'DIRECTOR']},
+    {key: 'writeoff',     label: 'Списание',        path: '/main/writeoff',     allowed: ['ACCOUNTANT', 'DIRECTOR']},
+    {key: 'supplies',     label: 'Поставки',        path: '/main/supplies',     allowed: 'ALL'},
+    {key: 'documents',    label: 'Документы',       path: '/main/documents',    allowed: 'ALL'},
+    {key: 'analytics',    label: 'Аналитика',       path: '/main/analytics',    allowed: ['ACCOUNTANT', 'DIRECTOR']},
+    {key: 'suppliers',    label: 'Поставщики',      path: '/main/suppliers',    allowed: ['ACCOUNTANT', 'DIRECTOR']},
+    {key: 'erp',          label: 'ERP Extractor',   path: '/main/erp-extractor',allowed: ['DIRECTOR']},
+    {key: 'employees',    label: 'Сотрудники',      path: '/main/employees',    allowed: ['DIRECTOR']},
+    {key: 'organization', label: 'Организация',     path: '/main/organization', allowed: ['DIRECTOR']},
+];
+
+const ROLE_LABELS = {
+    WORKER: 'Работник',
+    ACCOUNTANT: 'Бухгалтер',
+    DIRECTOR: 'Директор',
 };
 
 const MainNavbar = () => {
@@ -49,25 +51,10 @@ const MainNavbar = () => {
     const [anchorEl, setAnchorEl] = useState(null);
     const [mobileOpen, setMobileOpen] = useState(false);
 
-    const [role, setRole] = useState(() => {
-        if (user?.roles && user.roles.length > 0) {
-            const roleMap = {
-                'WORKER': 'Работник',
-                'ACCOUNTANT': 'Бухгалтер',
-                'DIRECTOR': 'Директор',
-            };
-            return roleMap[user.roles[0]] || 'Работник';
-        }
-        return localStorage.getItem('wms_role') || 'Работник';
-    });
-
-    const isRoleEditable = !user?.roles || user.roles.length === 0;
-
-    useEffect(() => {
-        if (!user) {
-            localStorage.setItem('wms_role', role);
-        }
-    }, [role, user]);
+    const userRole = user?.role || (Array.isArray(user?.roles) ? user.roles[0] : undefined);
+    const navItems = NAV_ITEMS.filter(
+        (item) => item.allowed === 'ALL' || (userRole && item.allowed.includes(userRole))
+    );
 
     const handleSettingsClick = (event) => {
         setAnchorEl(event.currentTarget);
@@ -85,8 +72,6 @@ const MainNavbar = () => {
         dispatch(logout());
         navigate('/');
     };
-
-    const navItems = roleNav[role] || [];
 
     const toggleMobile = (open) => () => {
         setMobileOpen(open);
@@ -109,6 +94,15 @@ const MainNavbar = () => {
                         >
                             WMS
                         </Typography>
+                        {userRole && ROLE_LABELS[userRole] && (
+                            <Chip
+                                label={ROLE_LABELS[userRole]}
+                                size="small"
+                                color="primary"
+                                variant="outlined"
+                                sx={{fontWeight: 600}}
+                            />
+                        )}
                     </Box>
                     <Box sx={{
                         position: {xs: 'static', md: 'absolute'},
@@ -122,21 +116,7 @@ const MainNavbar = () => {
                         justifyContent: {xs: 'center', md: 'flex-start'},
                         px: {xs: 1, md: 0},
                     }}>
-                        {isRoleEditable ? (
-                            <FormControl size="small" sx={{minWidth: 140}}>
-                                <InputLabel>Роль</InputLabel>
-                                <Select value={role} label="Роль" onChange={(e) => setRole(e.target.value)}>
-                                    {Object.keys(roleNav).map((r) => (
-                                        <MenuItem key={r} value={r}>{r}</MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                        ) : (
-                            <Box sx={{px: 1, py: 0.5, borderRadius: 1, bgcolor: 'transparent'}}>
-                                <Typography variant="body2" sx={{fontWeight: 700}}>{role}</Typography>
-                            </Box>
-                        )}
-                        <Box sx={{display: {xs: 'none', md: 'flex'}, gap: 1}}>
+                        <Box sx={{display: {xs: 'none', md: 'flex'}, gap: 1, flexWrap: 'wrap'}}>
                             {navItems.map((item) => (
                                 <Button
                                     key={item.key}
@@ -193,22 +173,12 @@ const MainNavbar = () => {
                 <Box sx={{width: 260}} role="presentation" onKeyDown={(e) => {
                     if (e.key === 'Escape') setMobileOpen(false);
                 }}>
-                    <Box sx={{p: 2}}>
-                        {isRoleEditable ? (
-                            <FormControl fullWidth size="small">
-                                <InputLabel>Роль</InputLabel>
-                                <Select value={role} label="Роль" onChange={(e) => setRole(e.target.value)}>
-                                    {Object.keys(roleNav).map((r) => (
-                                        <MenuItem key={r} value={r}>{r}</MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                        ) : (
-                            <Box sx={{px: 2, py: 1, borderRadius: 1, bgcolor: 'action.hover', mb: 2}}>
-                                <Typography variant="body2" sx={{fontWeight: 700}}>{role}</Typography>
-                            </Box>
-                        )}
-                    </Box>
+                    {userRole && ROLE_LABELS[userRole] && (
+                        <Box sx={{px: 2, py: 1.5}}>
+                            <Typography variant="caption" color="text.secondary">Роль</Typography>
+                            <Typography variant="body1" sx={{fontWeight: 700}}>{ROLE_LABELS[userRole]}</Typography>
+                        </Box>
+                    )}
                     <Divider/>
                     <List>
                         {navItems.map((item) => (

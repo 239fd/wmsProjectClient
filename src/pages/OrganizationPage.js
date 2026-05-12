@@ -1,500 +1,791 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Box,
-  Typography,
-  Paper,
-  TextField,
-  Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Tabs,
-  Tab,
-  Chip,
-  Divider,
-  Grid,
-  Card,
-  CardContent,
-  Alert
+  Box, Typography, Paper, TextField, Button,
+  IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
+  Tabs, Tab, Chip, Divider, Grid, Card, CardContent, Alert,
+  CircularProgress, Stack, Collapse,
+  MenuItem, Select, FormControl, InputLabel, FormHelperText,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Tooltip,
 } from '@mui/material';
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Add as AddIcon,
   Warehouse as WarehouseIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+  ViewModule as ViewModuleIcon,
+  AcUnit as AcUnitIcon,
+  Inventory2 as Inventory2Icon,
+  Layers as LayersIcon,
 } from '@mui/icons-material';
+import { useSearchParams } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { useForm, Controller } from 'react-hook-form';
+import { yupResolver } from '@hookform/resolvers/yup';
+import { selectUser, fetchProfile, setUser } from '../store/slices/authSlice';
+import organizationService from '../services/organizationService';
+import warehouseService from '../services/warehouseService';
+import { useWarehouses, useEmployees } from '../hooks';
+import { useSnackbar } from '../context/SnackbarContext';
+import EmptyState from '../components/shared/EmptyState';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
-import RackDialog from '../components/shared/RackDialog';
+import { applyServerError } from '../utils/applyServerError';
+import {
+  organizationSchema, warehouseSchema, rackSchema,
+  shelfSchema, cellSchema, fridgeSchema, palletSchema,
+} from '../validation/schemas';
 
-const mockOrganization = {
-  org_id: '1',
-  name: 'ООО "Торговая компания"',
-  short_name: 'ТК',
-  unp: '123456789',
-  address: 'г. Минск, ул. Примерная, 1',
-  status: 'ACTIVE',
-};
+const EMPTY_ORG_FORM = { name: '', shortName: '', unp: '', address: '' };
+const EMPTY_WH_FORM = { name: '', address: '', responsibleUserId: '' };
 
-const mockWarehouses = [
-  {
-    warehouse_id: '1',
-    name: 'Склад 1',
-    address: 'ул. Складская, 10',
-    responsible_user_id: '3',
-    responsible_name: 'Сидорова А.С.',
-    is_active: true,
-    racks: [
-      {
-        rack_id: '1',
-        name: 'Стеллаж А-1',
-        kind: 'SHELF',
-        shelf_count: 5,
-        shelf_capacity_kg: 500,
-        length_cm: 200,
-        width_cm: 60,
-        height_cm: 250,
-        is_active: true,
-      },
-      {
-        rack_id: '2',
-        name: 'Холодильник Х-1',
-        kind: 'FRIDGE',
-        temperature_c: -18,
-        length_cm: 300,
-        width_cm: 150,
-        height_cm: 220,
-        is_active: true,
-      },
-    ],
-  },
-  {
-    warehouse_id: '2',
-    name: 'Склад 2',
-    address: 'ул. Промышленная, 5',
-    responsible_user_id: null,
-    responsible_name: null,
-    is_active: true,
-    racks: [
-      {
-        rack_id: '3',
-        name: 'Паллетный П-1',
-        kind: 'PALLET',
-        pallet_place_count: 24,
-        max_weight_kg: 1000,
-        length_cm: 400,
-        width_cm: 200,
-        height_cm: 300,
-        is_active: true,
-      },
-    ],
-  },
+const RACK_KIND_OPTIONS = [
+  { value: 'SHELF', label: 'Полочный', icon: LayersIcon },
+  { value: 'CELL', label: 'Ячеистый', icon: ViewModuleIcon },
+  { value: 'FRIDGE', label: 'Холодильник', icon: AcUnitIcon },
+  { value: 'PALLET', label: 'Паллетный', icon: Inventory2Icon },
+];
+const RACK_KIND_LABEL = Object.fromEntries(RACK_KIND_OPTIONS.map((o) => [o.value, o.label]));
+const RACK_KIND_ICON = Object.fromEntries(RACK_KIND_OPTIONS.map((o) => [o.value, o.icon]));
+
+const STORAGE_CONDITION_OPTIONS = [
+  { value: '', label: '— не указано —' },
+  { value: 'AMBIENT', label: 'Обычные' },
+  { value: 'DRY', label: 'Сухое' },
+  { value: 'FRIDGE', label: 'Холодильник' },
+  { value: 'FREEZER', label: 'Морозильник' },
 ];
 
-const rackTypeLabels = {
-  SHELF: 'Полочный',
-  CELL: 'Ячеистый',
-  FRIDGE: 'Холодильник',
-  PALLET: 'Паллетный',
+const PALLET_TYPE_OPTIONS = [
+  { value: 'EUR', label: 'EUR (80×120 см)' },
+  { value: 'FIN', label: 'FIN (100×120 см)' },
+  { value: 'US', label: 'US (120×120 см)' },
+  { value: 'ASIA', label: 'ASIA (110×110 см)' },
+];
+
+const EMPTY_RACK_FORM = { name: '', kind: 'SHELF', storageConditions: '' };
+const EMPTY_SLOT_FORM = {
+  shelfCapacityKg: '', maxWeightKg: '',
+  minTemperatureC: '', maxTemperatureC: '',
+  lengthCm: '', widthCm: '', heightCm: '',
+  palletPlaceCount: '', palletType: 'EUR',
+};
+
+const slotSchemaFor = (kind) => {
+  switch (kind) {
+    case 'SHELF': return shelfSchema;
+    case 'CELL': return cellSchema;
+    case 'FRIDGE': return fridgeSchema;
+    case 'PALLET': return palletSchema;
+    default: return null;
+  }
 };
 
 const OrganizationPage = () => {
+  const dispatch = useDispatch();
+  const user = useSelector(selectUser);
+  const { notify } = useSnackbar();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isFirstTime = searchParams.get('firstTime') === 'true';
+
+  const orgId = user?.organizationId;
+
   const [tabValue, setTabValue] = useState(0);
-  const [organization, setOrganization] = useState(mockOrganization);
-  const [hasOrganization, setHasOrganization] = useState(true);
-  const [warehouses, setWarehouses] = useState(mockWarehouses);
+  const [organization, setOrganization] = useState(null);
+  const [orgLoading, setOrgLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const { data: warehouses, refresh: refreshWarehouses } = useWarehouses();
+  const { data: employees } = useEmployees();
 
   const [orgDialogOpen, setOrgDialogOpen] = useState(false);
-  const [orgDeleteDialogOpen, setOrgDeleteDialogOpen] = useState(false);
-  const [orgForm, setOrgForm] = useState(organization);
+  const [orgBusy, setOrgBusy] = useState(false);
+  const [orgDeleteOpen, setOrgDeleteOpen] = useState(false);
 
-  const [warehouseDialogOpen, setWarehouseDialogOpen] = useState(false);
-  const [warehouseDeleteDialogOpen, setWarehouseDeleteDialogOpen] = useState(false);
-  const [selectedWarehouse, setSelectedWarehouse] = useState(null);
-  const [warehouseForm, setWarehouseForm] = useState({ name: '', address: '' });
+  const [whDialogOpen, setWhDialogOpen] = useState(false);
+  const [whEditing, setWhEditing] = useState(null);
+  const [whBusy, setWhBusy] = useState(false);
+  const [whDeleteOpen, setWhDeleteOpen] = useState(false);
+  const [selectedWh, setSelectedWh] = useState(null);
 
-  const [rackDialogOpen, setRackDialogOpen] = useState(false);
-  const [rackDeleteDialogOpen, setRackDeleteDialogOpen] = useState(false);
-  const [selectedRack, setSelectedRack] = useState(null);
-  const [currentWarehouseId, setCurrentWarehouseId] = useState(null);
+  const [racksByWh, setRacksByWh] = useState({});
+  const [expandedWh, setExpandedWh] = useState(new Set());
 
-  const handleOrgDialogOpen = () => {
-    setOrgForm(organization);
+  const [rackDialog, setRackDialog] = useState({ open: false, warehouseId: null });
+  const [rackBusy, setRackBusy] = useState(false);
+  const [rackDeleteState, setRackDeleteState] = useState({ open: false, rack: null, warehouseId: null });
+
+  const [slotDialog, setSlotDialog] = useState({ open: false, rack: null });
+  const [slotBusy, setSlotBusy] = useState(false);
+
+  const [slotsByRack, setSlotsByRack] = useState({});
+  const [expandedRacks, setExpandedRacks] = useState(new Set());
+
+  const orgForm = useForm({
+    resolver: yupResolver(organizationSchema),
+    defaultValues: EMPTY_ORG_FORM,
+    mode: 'onTouched',
+  });
+  const whForm = useForm({
+    resolver: yupResolver(warehouseSchema),
+    defaultValues: EMPTY_WH_FORM,
+    mode: 'onTouched',
+  });
+  const rackForm = useForm({
+    resolver: yupResolver(rackSchema),
+    defaultValues: EMPTY_RACK_FORM,
+    mode: 'onTouched',
+  });
+
+  const slotForm = useForm({
+    defaultValues: EMPTY_SLOT_FORM,
+    mode: 'onSubmit',
+  });
+
+  const hasOrganization = !!organization;
+
+  const loadOrg = useCallback(async () => {
+    if (!orgId) {
+      setOrgLoading(false);
+      return;
+    }
+    setOrgLoading(true);
+    setError(null);
+    try {
+      const org = await organizationService.getById(orgId);
+      setOrganization(org);
+    } catch (err) {
+      setError(err.message || 'Не удалось загрузить данные организации');
+    } finally {
+      setOrgLoading(false);
+    }
+  }, [orgId]);
+
+  useEffect(() => { loadOrg(); }, [loadOrg]);
+
+  useEffect(() => {
+    if (!orgLoading && !organization && (isFirstTime || !orgId)) {
+      orgForm.reset(EMPTY_ORG_FORM);
+      setOrgDialogOpen(true);
+    }
+
+  }, [orgLoading, organization, isFirstTime, orgId]);
+
+  const handleOrgEdit = () => {
+    orgForm.reset({
+      name: organization.name || '',
+      shortName: organization.shortName || '',
+      unp: organization.unp || '',
+      address: organization.address || '',
+    });
     setOrgDialogOpen(true);
   };
 
-  const handleOrgSave = () => {
-    if (!hasOrganization) {
-      setHasOrganization(true);
-      setOrganization({ ...orgForm, org_id: Date.now().toString(), status: 'ACTIVE' });
-    } else {
-      setOrganization(orgForm);
+  const onOrgSave = async (values) => {
+    setOrgBusy(true);
+    orgForm.clearErrors(['unp', 'name']);
+    try {
+      const payload = {
+        name: values.name.trim(),
+        shortName: values.shortName?.trim() || null,
+        unp: values.unp.trim(),
+        address: values.address.trim(),
+      };
+      if (hasOrganization) {
+        const updated = await organizationService.update(orgId, payload);
+        setOrganization(updated);
+        notify('Организация обновлена');
+      } else {
+        const created = await organizationService.create(payload);
+        setOrganization(created);
+        dispatch(setUser({ ...user, organizationId: created.orgId }));
+        dispatch(fetchProfile());
+        notify('Организация создана');
+        if (isFirstTime) setSearchParams({}, { replace: true });
+        setTabValue(1);
+      }
+      setOrgDialogOpen(false);
+    } catch (err) {
+      const handled = applyServerError(err, orgForm.setError, ['unp', 'name']);
+      if (!handled) notify(err.message || 'Не удалось сохранить организацию', 'error');
+    } finally {
+      setOrgBusy(false);
     }
-    setOrgDialogOpen(false);
   };
 
-  const handleOrgDelete = () => {
-    setHasOrganization(false);
-    setOrganization(null);
-    setWarehouses([]);
-    setOrgDeleteDialogOpen(false);
+  const handleOrgDelete = async () => {
+    setOrgBusy(true);
+    try {
+      await organizationService.delete(orgId);
+      notify('Организация удалена');
+      setOrganization(null);
+      await refreshWarehouses();
+      dispatch(setUser({ ...user, organizationId: null }));
+    } catch (err) {
+      notify(err.message || 'Не удалось удалить организацию', 'error');
+    } finally {
+      setOrgBusy(false);
+      setOrgDeleteOpen(false);
+    }
   };
 
-  const handleWarehouseDialogOpen = (warehouse = null) => {
+  const handleWhDialogOpen = (warehouse = null) => {
     if (warehouse) {
-      setSelectedWarehouse(warehouse);
-      setWarehouseForm({ name: warehouse.name, address: warehouse.address });
+      setWhEditing(warehouse);
+      whForm.reset({
+        name: warehouse.name || '',
+        address: warehouse.address || '',
+        responsibleUserId: warehouse.responsibleUserId || '',
+      });
     } else {
-      setSelectedWarehouse(null);
-      setWarehouseForm({ name: '', address: '' });
+      setWhEditing(null);
+      whForm.reset(EMPTY_WH_FORM);
     }
-    setWarehouseDialogOpen(true);
+    setWhDialogOpen(true);
   };
 
-  const handleWarehouseSave = () => {
-    if (selectedWarehouse) {
-      setWarehouses(
-        warehouses.map((wh) =>
-          wh.warehouse_id === selectedWarehouse.warehouse_id
-            ? { ...wh, ...warehouseForm }
-            : wh
-        )
-      );
+  const onWhSave = async (values) => {
+    setWhBusy(true);
+    try {
+      const payload = {
+        name: values.name.trim(),
+        address: values.address.trim(),
+        ...(values.responsibleUserId ? { responsibleUserId: values.responsibleUserId } : {}),
+      };
+      if (whEditing) {
+        await warehouseService.updateWarehouse(whEditing.warehouseId || whEditing.id, payload);
+        notify('Склад обновлён');
+      } else {
+        await warehouseService.createWarehouse({ ...payload, orgId });
+        notify('Склад создан');
+      }
+      setWhDialogOpen(false);
+      await refreshWarehouses();
+    } catch (err) {
+      notify(err.message || 'Не удалось сохранить склад', 'error');
+    } finally {
+      setWhBusy(false);
+    }
+  };
+
+  const handleWhDelete = async () => {
+    if (!selectedWh) return;
+    setWhBusy(true);
+    try {
+      await warehouseService.deleteWarehouse(selectedWh.warehouseId || selectedWh.id);
+      notify('Склад удалён');
+      setWhDeleteOpen(false);
+      setSelectedWh(null);
+      await refreshWarehouses();
+    } catch (err) {
+      notify(err.message || 'Не удалось удалить склад', 'error');
+    } finally {
+      setWhBusy(false);
+    }
+  };
+
+  const loadRacks = async (warehouseId) => {
+    setRacksByWh((prev) => ({ ...prev, [warehouseId]: 'loading' }));
+    try {
+      const list = await warehouseService.getRacksByWarehouse(warehouseId);
+      setRacksByWh((prev) => ({
+        ...prev,
+        [warehouseId]: Array.isArray(list) ? list : (list?.content || []),
+      }));
+    } catch (err) {
+      setRacksByWh((prev) => ({ ...prev, [warehouseId]: 'error' }));
+      notify(err.message || 'Не удалось загрузить стеллажи', 'error');
+    }
+  };
+
+  const loadSlots = async (rackId) => {
+    setSlotsByRack((prev) => ({ ...prev, [rackId]: 'loading' }));
+    try {
+      const data = await warehouseService.getSlotsByRack(rackId);
+      setSlotsByRack((prev) => ({
+        ...prev,
+        [rackId]: { kind: data?.kind, slots: data?.slots || [] },
+      }));
+    } catch (err) {
+      setSlotsByRack((prev) => ({ ...prev, [rackId]: 'error' }));
+      notify(err.message || 'Не удалось загрузить слоты', 'error');
+    }
+  };
+
+  const handleToggleRack = (rackId) => {
+    setExpandedRacks((prev) => {
+      const next = new Set(prev);
+      if (next.has(rackId)) {
+        next.delete(rackId);
+      } else {
+        next.add(rackId);
+        if (!slotsByRack[rackId] || slotsByRack[rackId] === 'error') {
+          loadSlots(rackId);
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleToggleWh = (warehouseId) => {
+    setExpandedWh((prev) => {
+      const next = new Set(prev);
+      if (next.has(warehouseId)) {
+        next.delete(warehouseId);
+      } else {
+        next.add(warehouseId);
+        if (!racksByWh[warehouseId] || racksByWh[warehouseId] === 'error') {
+          loadRacks(warehouseId);
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleRackDialogOpen = (warehouseId) => {
+    rackForm.reset(EMPTY_RACK_FORM);
+    setRackDialog({ open: true, warehouseId });
+  };
+
+  const onRackSave = async (values) => {
+    setRackBusy(true);
+    try {
+      await warehouseService.createRack({
+        warehouseId: rackDialog.warehouseId,
+        name: values.name.trim(),
+        kind: values.kind,
+        storageConditions: values.storageConditions || null,
+      });
+      notify('Стеллаж создан');
+      setRackDialog({ open: false, warehouseId: null });
+      await loadRacks(rackDialog.warehouseId);
+    } catch (err) {
+      notify(err.message || 'Не удалось создать стеллаж', 'error');
+    } finally {
+      setRackBusy(false);
+    }
+  };
+
+  const handleRackDelete = async () => {
+    const { rack, warehouseId } = rackDeleteState;
+    if (!rack) return;
+    setRackBusy(true);
+    try {
+      await warehouseService.deleteRack(rack.rackId);
+      notify('Стеллаж удалён');
+      setRackDeleteState({ open: false, rack: null, warehouseId: null });
+      await loadRacks(warehouseId);
+    } catch (err) {
+      notify(err.message || 'Не удалось удалить стеллаж', 'error');
+    } finally {
+      setRackBusy(false);
+    }
+  };
+
+  const handleSlotDialogOpen = (rack) => {
+    slotForm.reset(EMPTY_SLOT_FORM);
+    setSlotDialog({ open: true, rack });
+  };
+
+  const onSlotSave = async (raw) => {
+    const { rack } = slotDialog;
+    if (!rack) return;
+
+    let values;
+    if (rack.kind === 'SHELF' || rack.kind === 'CELL') {
+      values = {
+        ...(rack.kind === 'SHELF'
+          ? { shelfCapacityKg: raw.shelfCapacityKg }
+          : { maxWeightKg: raw.maxWeightKg }),
+        lengthCm: raw.lengthCm,
+        widthCm: raw.widthCm,
+        heightCm: raw.heightCm,
+      };
+    } else if (rack.kind === 'FRIDGE') {
+      values = {
+        minTemperatureC: raw.minTemperatureC,
+        maxTemperatureC: raw.maxTemperatureC,
+        lengthCm: raw.lengthCm, widthCm: raw.widthCm, heightCm: raw.heightCm,
+      };
+    } else if (rack.kind === 'PALLET') {
+      values = {
+        palletPlaceCount: raw.palletPlaceCount,
+        maxWeightKg: raw.maxWeightKg,
+        palletType: raw.palletType,
+      };
     } else {
-      setWarehouses([
-        ...warehouses,
-        {
-          warehouse_id: Date.now().toString(),
-          ...warehouseForm,
-          responsible_user_id: null,
-          responsible_name: null,
-          is_active: true,
-          racks: [],
-        },
-      ]);
+      return;
     }
-    setWarehouseDialogOpen(false);
+
+    const schema = slotSchemaFor(rack.kind);
+    let validated;
+    try {
+      validated = await schema.validate(values, { abortEarly: false });
+    } catch (validationError) {
+      slotForm.clearErrors();
+      (validationError.inner || []).forEach((err) => {
+        slotForm.setError(err.path, { type: 'yup', message: err.message });
+      });
+      return;
+    }
+
+    setSlotBusy(true);
+    try {
+      if (rack.kind === 'SHELF') {
+        await warehouseService.addShelf(rack.rackId, validated);
+      } else if (rack.kind === 'CELL') {
+        await warehouseService.addCell(rack.rackId, validated);
+      } else if (rack.kind === 'FRIDGE') {
+        await warehouseService.addFridge(rack.rackId, validated);
+      } else if (rack.kind === 'PALLET') {
+        await warehouseService.addPallet(rack.rackId, validated);
+      }
+      notify('Слот добавлен');
+      setSlotDialog({ open: false, rack: null });
+
+      if (expandedRacks.has(rack.rackId)) {
+        loadSlots(rack.rackId);
+      } else {
+
+        setSlotsByRack((prev) => {
+          const next = { ...prev };
+          delete next[rack.rackId];
+          return next;
+        });
+      }
+    } catch (err) {
+      notify(err.message || 'Не удалось добавить слот', 'error');
+    } finally {
+      setSlotBusy(false);
+    }
   };
 
-  const handleWarehouseDelete = () => {
-    setWarehouses(warehouses.filter((wh) => wh.warehouse_id !== selectedWarehouse.warehouse_id));
-    setWarehouseDeleteDialogOpen(false);
-    setSelectedWarehouse(null);
-  };
-
-  const handleRackDialogOpen = (warehouseId, rack = null) => {
-    setCurrentWarehouseId(warehouseId);
-    setSelectedRack(rack);
-    setRackDialogOpen(true);
-  };
-
-  const handleRackSave = (rackData) => {
-    setWarehouses(
-      warehouses.map((wh) => {
-        if (wh.warehouse_id === currentWarehouseId) {
-          if (selectedRack) {
-            return {
-              ...wh,
-              racks: wh.racks.map((r) =>
-                r.rack_id === selectedRack.rack_id ? { ...r, ...rackData } : r
-              ),
-            };
-          } else {
-            return {
-              ...wh,
-              racks: [
-                ...wh.racks,
-                { ...rackData, rack_id: Date.now().toString(), is_active: true },
-              ],
-            };
-          }
-        }
-        return wh;
-      })
+  if (orgLoading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
+        <CircularProgress />
+      </Box>
     );
-  };
-
-  const handleRackDelete = () => {
-    setWarehouses(
-      warehouses.map((wh) => {
-        if (wh.warehouse_id === currentWarehouseId) {
-          return {
-            ...wh,
-            racks: wh.racks.filter((r) => r.rack_id !== selectedRack.rack_id),
-          };
-        }
-        return wh;
-      })
-    );
-    setRackDeleteDialogOpen(false);
-    setSelectedRack(null);
-  };
+  }
 
   return (
     <Box sx={{ width: '100%', bgcolor: '#f5f5f5', minHeight: '100vh', pt: 4, pb: 6 }}>
-      <Box sx={{ width: '100%', maxWidth: 1200, mx: 'auto', px: { xs: 2, md: 3 } }}>
+      <Box sx={{ width: '100%', maxWidth: 1440, mx: 'auto', px: { xs: 2, md: 3 } }}>
         <Typography variant="h4" fontWeight={700} mb={3}>
           Организация
         </Typography>
 
+        {(isFirstTime && !hasOrganization) && (
+          <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
+            Добро пожаловать! Заполните реквизиты вашей организации.
+            После создания вы сможете добавить склады и пригласить сотрудников.
+          </Alert>
+        )}
+
+        {error && (
+          <Alert
+            severity="error"
+            action={<Button color="inherit" size="small" onClick={loadOrg}>Повторить</Button>}
+            sx={{ mb: 3 }}
+          >
+            {error}
+          </Alert>
+        )}
+
         <Paper sx={{ borderRadius: 3 }}>
-          <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
             <Tab icon={<BusinessIcon />} iconPosition="start" label="Реквизиты организации" />
             <Tab icon={<WarehouseIcon />} iconPosition="start" label="Склады" />
           </Tabs>
 
-          {/* Вкладка: Организация */}
+          {}
           {tabValue === 0 && (
             <Box sx={{ p: 4 }}>
               {!hasOrganization ? (
-                <Box sx={{ textAlign: 'center', py: 6 }}>
-                  <Typography variant="h6" color="text.secondary" mb={3}>
-                    У вас еще нет организации
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    size="large"
-                    startIcon={<AddIcon />}
-                    onClick={() => {
-                      setOrgForm({ name: '', short_name: '', unp: '', address: '' });
-                      setOrgDialogOpen(true);
-                    }}
-                  >
-                    Создать организацию
-                  </Button>
-                </Box>
+                <EmptyState
+                  icon={BusinessIcon}
+                  title="Организация ещё не создана"
+                  actionLabel="Создать организацию"
+                  onAction={() => { orgForm.reset(EMPTY_ORG_FORM); setOrgDialogOpen(true); }}
+                />
               ) : (
                 <>
                   <Grid container spacing={3}>
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Полное наименование
-                      </Typography>
-                      <Typography variant="body1" mb={2}>
-                        {organization.name}
-                      </Typography>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Полное наименование</Typography>
+                      <Typography variant="body1" mb={2}>{organization.name}</Typography>
                     </Grid>
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Краткое наименование
-                      </Typography>
-                      <Typography variant="body1" mb={2}>
-                        {organization.short_name || '—'}
-                      </Typography>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Краткое наименование</Typography>
+                      <Typography variant="body1" mb={2}>{organization.shortName || '—'}</Typography>
                     </Grid>
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        УНП
-                      </Typography>
-                      <Typography variant="body1" mb={2}>
-                        {organization.unp}
-                      </Typography>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <Typography variant="subtitle2" color="text.secondary">ИНН</Typography>
+                      <Typography variant="body1" mb={2}>{organization.unp}</Typography>
                     </Grid>
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Статус
-                      </Typography>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Статус</Typography>
                       <Chip
-                        label={organization.status === 'ACTIVE' ? 'Активна' : 'Неактивна'}
+                        label={organization.status === 'ACTIVE' ? 'Активна' : 'Архивирована'}
                         color={organization.status === 'ACTIVE' ? 'success' : 'default'}
                         size="small"
                       />
                     </Grid>
-                    <Grid item xs={12}>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Адрес
-                      </Typography>
-                      <Typography variant="body1" mb={2}>
-                        {organization.address}
-                      </Typography>
+                    <Grid size={12}>
+                      <Typography variant="subtitle2" color="text.secondary">Адрес</Typography>
+                      <Typography variant="body1">{organization.address}</Typography>
                     </Grid>
                   </Grid>
 
                   <Divider sx={{ my: 3 }} />
 
-                  <Box sx={{ display: 'flex', gap: 2 }}>
-                    <Button variant="outlined" startIcon={<EditIcon />} onClick={handleOrgDialogOpen}>
+                  <Stack direction="row" spacing={2}>
+                    <Button variant="outlined" startIcon={<EditIcon />} onClick={handleOrgEdit}>
                       Редактировать
                     </Button>
                     <Button
                       variant="outlined"
                       color="error"
                       startIcon={<DeleteIcon />}
-                      onClick={() => setOrgDeleteDialogOpen(true)}
+                      onClick={() => setOrgDeleteOpen(true)}
                     >
                       Удалить организацию
                     </Button>
-                  </Box>
+                  </Stack>
                 </>
               )}
             </Box>
           )}
 
-          {/* Вкладка: Склады */}
+          {}
           {tabValue === 1 && (
             <Box sx={{ p: 4 }}>
               {!hasOrganization ? (
                 <Alert severity="warning">
-                  Сначала создайте организацию на вкладке "Реквизиты организации"
+                  Сначала создайте организацию на вкладке «Реквизиты организации»
                 </Alert>
               ) : (
                 <>
-                  <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={() => handleWarehouseDialogOpen()}
-                    sx={{ mb: 3 }}
-                  >
-                    Добавить склад
-                  </Button>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+                    <Typography variant="h6" fontWeight={600}>
+                      Склады организации
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      startIcon={<AddIcon />}
+                      onClick={() => handleWhDialogOpen()}
+                    >
+                      Добавить склад
+                    </Button>
+                  </Stack>
 
                   {warehouses.length === 0 ? (
-                    <Typography color="text.secondary" align="center" py={4}>
-                      Складов пока нет
-                    </Typography>
+                    <EmptyState
+                      icon={WarehouseIcon}
+                      title="У вас ещё нет складов"
+                      description="Создайте первый склад, чтобы начать заполнять его стеллажами и принимать товар"
+                      actionLabel="Добавить первый склад"
+                      onAction={() => handleWhDialogOpen()}
+                    />
                   ) : (
                     <Grid container spacing={3}>
-                      {warehouses.map((warehouse) => (
-                        <Grid item xs={12} key={warehouse.warehouse_id}>
-                          <Card variant="outlined">
-                            <CardContent>
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
-                                <Box>
-                                  <Typography variant="h6" fontWeight={600}>
-                                    {warehouse.name}
-                                  </Typography>
-                                  <Typography variant="body2" color="text.secondary">
-                                    {warehouse.address}
-                                  </Typography>
-                                  {warehouse.responsible_name && (
-                                    <Chip
-                                      label={`Ответственный: ${warehouse.responsible_name}`}
+                      {warehouses.map((wh) => {
+                        const id = wh.warehouseId || wh.id;
+                        const isExpanded = expandedWh.has(id);
+                        const racksState = racksByWh[id];
+                        const racks = Array.isArray(racksState) ? racksState : [];
+                        const racksLoading = racksState === 'loading';
+                        const racksError = racksState === 'error';
+                        const racksCount = Array.isArray(racksState) ? racks.length : null;
+
+                        const responsible = wh.responsibleUserId
+                          ? employees.find((e) => e.userId === wh.responsibleUserId)
+                          : null;
+
+                        return (
+                          <Grid size={12} key={id}>
+                            <Card variant="outlined">
+                              <CardContent>
+                                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={1}>
+                                  <Box>
+                                    <Typography variant="h6" fontWeight={600}>{wh.name}</Typography>
+                                    <Typography variant="body2" color="text.secondary">{wh.address}</Typography>
+                                    {responsible && (
+                                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                        Ответственный: <b>{responsible.username || responsible.email}</b>
+                                      </Typography>
+                                    )}
+                                    {wh.responsibleUserId && !responsible && (
+                                      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                                        Ответственный: уволен или недоступен
+                                      </Typography>
+                                    )}
+                                    {wh.isActive === false && (
+                                      <Chip label="Неактивен" size="small" sx={{ mt: 1 }} />
+                                    )}
+                                  </Box>
+                                  <Stack direction="row" spacing={0}>
+                                    <IconButton size="small" onClick={() => handleWhDialogOpen(wh)}>
+                                      <EditIcon fontSize="small" />
+                                    </IconButton>
+                                    <IconButton
                                       size="small"
-                                      color="primary"
-                                      sx={{ mt: 1 }}
-                                    />
-                                  )}
-                                </Box>
-                                <Box>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => handleWarehouseDialogOpen(warehouse)}
+                                      color="error"
+                                      onClick={() => { setSelectedWh(wh); setWhDeleteOpen(true); }}
+                                    >
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Stack>
+                                </Stack>
+
+                                <Divider sx={{ my: 2 }} />
+
+                                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                  <Button
+                                    onClick={() => handleToggleWh(id)}
+                                    startIcon={isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                                    sx={{ textTransform: 'none', fontWeight: 600 }}
                                   >
-                                    <EditIcon />
-                                  </IconButton>
-                                  <IconButton
+                                    Стеллажи{racksCount !== null ? ` (${racksCount})` : ''}
+                                  </Button>
+                                  <Button
                                     size="small"
-                                    color="error"
-                                    onClick={() => {
-                                      setSelectedWarehouse(warehouse);
-                                      setWarehouseDeleteDialogOpen(true);
-                                    }}
+                                    startIcon={<AddIcon />}
+                                    onClick={() => handleRackDialogOpen(id)}
                                   >
-                                    <DeleteIcon />
-                                  </IconButton>
-                                </Box>
-                              </Box>
+                                    Добавить стеллаж
+                                  </Button>
+                                </Stack>
 
-                              <Divider sx={{ my: 2 }} />
-
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                                <Typography variant="subtitle1" fontWeight={600}>
-                                  Топология склада (стеллажи)
-                                </Typography>
-                                <Button
-                                  size="small"
-                                  startIcon={<AddIcon />}
-                                  onClick={() => handleRackDialogOpen(warehouse.warehouse_id)}
-                                >
-                                  Добавить стеллаж
-                                </Button>
-                              </Box>
-
-                              {warehouse.racks.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary">
-                                  Стеллажей нет
-                                </Typography>
-                              ) : (
-                                <TableContainer>
-                                  <Table size="small">
-                                    <TableHead>
-                                      <TableRow>
-                                        <TableCell>Название</TableCell>
-                                        <TableCell>Тип</TableCell>
-                                        <TableCell>Размеры (Д×Ш×В, см)</TableCell>
-                                        <TableCell>Параметры</TableCell>
-                                        <TableCell align="right">Действия</TableCell>
-                                      </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                      {warehouse.racks.map((rack) => (
-                                        <TableRow key={rack.rack_id}>
-                                          <TableCell>{rack.name}</TableCell>
-                                          <TableCell>
-                                            <Chip
-                                              label={rackTypeLabels[rack.kind]}
-                                              size="small"
-                                              color="primary"
-                                              variant="outlined"
-                                            />
-                                          </TableCell>
-                                          <TableCell>
-                                            {rack.length_cm}×{rack.width_cm}×{rack.height_cm}
-                                          </TableCell>
-                                          <TableCell>
-                                            {rack.kind === 'SHELF' && (
-                                              <>
-                                                {rack.shelf_count && `${rack.shelf_count} полок, `}
-                                                {rack.shelf_capacity_kg} кг/полка
-                                              </>
-                                            )}
-                                            {rack.kind === 'CELL' && (
-                                              <>
-                                                {rack.cell_count && `${rack.cell_count} ячеек, `}
-                                                {rack.max_weight_kg ? `${rack.max_weight_kg} кг/ячейка` : '—'}
-                                              </>
-                                            )}
-                                            {rack.kind === 'FRIDGE' && `${rack.temperature_c}°C`}
-                                            {rack.kind === 'PALLET' &&
-                                              `${rack.pallet_place_count} мест, ${rack.max_weight_kg} кг`}
-                                          </TableCell>
-                                          <TableCell align="right">
-                                            <IconButton
-                                              size="small"
-                                              onClick={() => handleRackDialogOpen(warehouse.warehouse_id, rack)}
-                                            >
-                                              <EditIcon fontSize="small" />
-                                            </IconButton>
-                                            <IconButton
-                                              size="small"
-                                              color="error"
-                                              onClick={() => {
-                                                setCurrentWarehouseId(warehouse.warehouse_id);
-                                                setSelectedRack(rack);
-                                                setRackDeleteDialogOpen(true);
-                                              }}
-                                            >
-                                              <DeleteIcon fontSize="small" />
-                                            </IconButton>
-                                          </TableCell>
-                                        </TableRow>
-                                      ))}
-                                    </TableBody>
-                                  </Table>
-                                </TableContainer>
-                              )}
-                            </CardContent>
-                          </Card>
-                        </Grid>
-                      ))}
+                                <Collapse in={isExpanded} timeout="auto">
+                                  <Box sx={{ pt: 2 }}>
+                                    {racksLoading ? (
+                                      <Box display="flex" justifyContent="center" py={3}>
+                                        <CircularProgress size={28} />
+                                      </Box>
+                                    ) : racksError ? (
+                                      <Alert
+                                        severity="error"
+                                        action={
+                                          <Button color="inherit" size="small" onClick={() => loadRacks(id)}>
+                                            Повторить
+                                          </Button>
+                                        }
+                                      >
+                                        Не удалось загрузить стеллажи
+                                      </Alert>
+                                    ) : racks.length === 0 ? (
+                                      <Typography color="text.secondary" textAlign="center" py={3}>
+                                        Стеллажей пока нет
+                                      </Typography>
+                                    ) : (
+                                      <TableContainer>
+                                        <Table size="small">
+                                          <TableHead>
+                                            <TableRow>
+                                              <TableCell sx={{ width: 40 }} />
+                                              <TableCell>Тип</TableCell>
+                                              <TableCell>Название</TableCell>
+                                              <TableCell>Условия хранения</TableCell>
+                                              <TableCell align="right">Действия</TableCell>
+                                            </TableRow>
+                                          </TableHead>
+                                          <TableBody>
+                                            {racks.map((rack) => {
+                                              const Icon = RACK_KIND_ICON[rack.kind];
+                                              const slotsState = slotsByRack[rack.rackId];
+                                              const slotsExpanded = expandedRacks.has(rack.rackId);
+                                              const slotsLoading = slotsState === 'loading';
+                                              const slotsError = slotsState === 'error';
+                                              const slotsData = (slotsState && slotsState !== 'loading' && slotsState !== 'error') ? slotsState : null;
+                                              return (
+                                                <React.Fragment key={rack.rackId}>
+                                                  <TableRow hover>
+                                                    <TableCell>
+                                                      <IconButton
+                                                        size="small"
+                                                        onClick={() => handleToggleRack(rack.rackId)}
+                                                      >
+                                                        {slotsExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                                                      </IconButton>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      <Stack direction="row" spacing={1} alignItems="center">
+                                                        {Icon && <Icon fontSize="small" color="action" />}
+                                                        <Typography variant="body2">
+                                                          {RACK_KIND_LABEL[rack.kind] || rack.kind}
+                                                        </Typography>
+                                                      </Stack>
+                                                    </TableCell>
+                                                    <TableCell>{rack.name}</TableCell>
+                                                    <TableCell>
+                                                      {rack.storageConditions
+                                                        ? (STORAGE_CONDITION_OPTIONS.find((o) => o.value === rack.storageConditions)?.label || rack.storageConditions)
+                                                        : '—'}
+                                                    </TableCell>
+                                                    <TableCell align="right">
+                                                      <Tooltip title="Добавить слот">
+                                                        <IconButton
+                                                          size="small"
+                                                          color="primary"
+                                                          onClick={() => handleSlotDialogOpen(rack)}
+                                                        >
+                                                          <AddIcon fontSize="small" />
+                                                        </IconButton>
+                                                      </Tooltip>
+                                                      <Tooltip title="Удалить стеллаж">
+                                                        <IconButton
+                                                          size="small"
+                                                          color="error"
+                                                          onClick={() => setRackDeleteState({ open: true, rack, warehouseId: id })}
+                                                        >
+                                                          <DeleteIcon fontSize="small" />
+                                                        </IconButton>
+                                                      </Tooltip>
+                                                    </TableCell>
+                                                  </TableRow>
+                                                  <TableRow>
+                                                    <TableCell colSpan={5} sx={{ py: 0, borderBottom: slotsExpanded ? undefined : 'none' }}>
+                                                      <Collapse in={slotsExpanded} timeout="auto">
+                                                        <Box sx={{ py: 2 }}>
+                                                          {slotsLoading ? (
+                                                            <Box display="flex" justifyContent="center" py={2}>
+                                                              <CircularProgress size={24} />
+                                                            </Box>
+                                                          ) : slotsError ? (
+                                                            <Alert
+                                                              severity="error"
+                                                              action={<Button size="small" onClick={() => loadSlots(rack.rackId)}>Повторить</Button>}
+                                                            >
+                                                              Не удалось загрузить слоты
+                                                            </Alert>
+                                                          ) : !slotsData || slotsData.slots.length === 0 ? (
+                                                            <Typography variant="caption" color="text.secondary" sx={{ pl: 2 }}>
+                                                              Слотов пока нет
+                                                            </Typography>
+                                                          ) : (
+                                                            <RackSlotsTable kind={slotsData.kind} slots={slotsData.slots} />
+                                                          )}
+                                                        </Box>
+                                                      </Collapse>
+                                                    </TableCell>
+                                                  </TableRow>
+                                                </React.Fragment>
+                                              );
+                                            })}
+                                          </TableBody>
+                                        </Table>
+                                      </TableContainer>
+                                    )}
+                                  </Box>
+                                </Collapse>
+                              </CardContent>
+                            </Card>
+                          </Grid>
+                        );
+                      })}
                     </Grid>
                   )}
                 </>
@@ -503,120 +794,458 @@ const OrganizationPage = () => {
           )}
         </Paper>
 
-        {/* Диалог создания/редактирования организации */}
-        <Dialog open={orgDialogOpen} onClose={() => setOrgDialogOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>
-            {hasOrganization ? 'Редактировать организацию' : 'Создать организацию'}
-          </DialogTitle>
-          <DialogContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-              <TextField
-                label="Полное наименование"
-                value={orgForm.name}
-                onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })}
-                fullWidth
-                required
-              />
-              <TextField
-                label="Краткое наименование"
-                value={orgForm.short_name}
-                onChange={(e) => setOrgForm({ ...orgForm, short_name: e.target.value })}
-                fullWidth
-              />
-              <TextField
-                label="УНП"
-                value={orgForm.unp}
-                onChange={(e) => setOrgForm({ ...orgForm, unp: e.target.value })}
-                fullWidth
-                required
-              />
-              <TextField
-                label="Адрес"
-                value={orgForm.address}
-                onChange={(e) => setOrgForm({ ...orgForm, address: e.target.value })}
-                fullWidth
-                multiline
-                rows={2}
-              />
-            </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setOrgDialogOpen(false)}>Отмена</Button>
-            <Button onClick={handleOrgSave} variant="contained">
-              {hasOrganization ? 'Сохранить' : 'Создать'}
-            </Button>
-          </DialogActions>
+        {}
+        <Dialog open={orgDialogOpen} onClose={() => !orgBusy && setOrgDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>{hasOrganization ? 'Редактировать организацию' : 'Создать организацию'}</DialogTitle>
+          <form onSubmit={orgForm.handleSubmit(onOrgSave)} noValidate>
+            <DialogContent>
+              <Stack spacing={2} mt={1}>
+                <TextField
+                  label="Полное наименование"
+                  fullWidth
+                  disabled={orgBusy}
+                  {...orgForm.register('name')}
+                  error={!!orgForm.formState.errors.name}
+                  helperText={orgForm.formState.errors.name?.message}
+                />
+                <TextField
+                  label="Краткое наименование"
+                  fullWidth
+                  disabled={orgBusy}
+                  {...orgForm.register('shortName')}
+                  error={!!orgForm.formState.errors.shortName}
+                  helperText={orgForm.formState.errors.shortName?.message}
+                />
+                <TextField
+                  label="ИНН"
+                  fullWidth
+                  disabled={orgBusy}
+                  {...orgForm.register('unp')}
+                  error={!!orgForm.formState.errors.unp}
+                  helperText={orgForm.formState.errors.unp?.message || '9 цифр'}
+                />
+                <TextField
+                  label="Юридический адрес"
+                  fullWidth
+                  disabled={orgBusy}
+                  {...orgForm.register('address')}
+                  error={!!orgForm.formState.errors.address}
+                  helperText={orgForm.formState.errors.address?.message}
+                />
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setOrgDialogOpen(false)} disabled={orgBusy}>Отмена</Button>
+              <Button variant="contained" type="submit" disabled={orgBusy}>
+                {orgBusy ? <CircularProgress size={20} color="inherit" /> : (hasOrganization ? 'Сохранить' : 'Создать')}
+              </Button>
+            </DialogActions>
+          </form>
         </Dialog>
 
-        {/* Диалог удаления организации */}
         <ConfirmDialog
-          open={orgDeleteDialogOpen}
-          onClose={() => setOrgDeleteDialogOpen(false)}
+          open={orgDeleteOpen}
+          onClose={() => setOrgDeleteOpen(false)}
           onConfirm={handleOrgDelete}
           title="Удаление организации"
-          message="Вы уверены, что хотите удалить организацию? Все данные, включая склады и стеллажи, будут удалены."
+          message={<>Удалить организацию <b>{organization?.name}</b>? Все склады, сотрудники и связанные данные будут отвязаны.</>}
+          confirmText="Удалить"
+          confirmColor="error"
+          busy={orgBusy}
         />
 
-        {/* Диалог создания/редактирования склада */}
-        <Dialog open={warehouseDialogOpen} onClose={() => setWarehouseDialogOpen(false)} maxWidth="xs" fullWidth>
-          <DialogTitle>
-            {selectedWarehouse ? 'Редактировать склад' : 'Добавить склад'}
-          </DialogTitle>
-          <DialogContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-              <TextField
-                label="Наименование"
-                value={warehouseForm.name}
-                onChange={(e) => setWarehouseForm({ ...warehouseForm, name: e.target.value })}
-                fullWidth
-                required
-              />
-              <TextField
-                label="Адрес"
-                value={warehouseForm.address}
-                onChange={(e) => setWarehouseForm({ ...warehouseForm, address: e.target.value })}
-                fullWidth
-                multiline
-                rows={2}
-              />
-            </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setWarehouseDialogOpen(false)}>Отмена</Button>
-            <Button onClick={handleWarehouseSave} variant="contained">
-              Сохранить
-            </Button>
-          </DialogActions>
+        {}
+        <Dialog open={whDialogOpen} onClose={() => !whBusy && setWhDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>{whEditing ? 'Редактировать склад' : 'Новый склад'}</DialogTitle>
+          <form onSubmit={whForm.handleSubmit(onWhSave)} noValidate>
+            <DialogContent>
+              <Stack spacing={2} mt={1}>
+                <TextField
+                  label="Название"
+                  fullWidth
+                  disabled={whBusy}
+                  {...whForm.register('name')}
+                  error={!!whForm.formState.errors.name}
+                  helperText={whForm.formState.errors.name?.message}
+                />
+                <TextField
+                  label="Адрес"
+                  fullWidth
+                  disabled={whBusy}
+                  {...whForm.register('address')}
+                  error={!!whForm.formState.errors.address}
+                  helperText={whForm.formState.errors.address?.message}
+                />
+                <Controller
+                  name="responsibleUserId"
+                  control={whForm.control}
+                  render={({ field }) => (
+                    <FormControl fullWidth>
+                      <InputLabel>Ответственный (опционально)</InputLabel>
+                      <Select {...field} label="Ответственный (опционально)" variant="outlined" disabled={whBusy}>
+                        <MenuItem value="">— не назначен —</MenuItem>
+                        {employees
+                          .filter((emp) => !emp.isBlocked && emp.isActive !== false)
+                          .map((emp) => (
+                            <MenuItem key={emp.userId} value={emp.userId}>
+                              {emp.username || emp.email} · {emp.role}
+                            </MenuItem>
+                          ))}
+                      </Select>
+                    </FormControl>
+                  )}
+                />
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setWhDialogOpen(false)} disabled={whBusy}>Отмена</Button>
+              <Button variant="contained" type="submit" disabled={whBusy}>
+                {whBusy ? <CircularProgress size={20} color="inherit" /> : (whEditing ? 'Сохранить' : 'Создать')}
+              </Button>
+            </DialogActions>
+          </form>
         </Dialog>
 
-        {/* Диалог удаления склада */}
         <ConfirmDialog
-          open={warehouseDeleteDialogOpen}
-          onClose={() => setWarehouseDeleteDialogOpen(false)}
-          onConfirm={handleWarehouseDelete}
+          open={whDeleteOpen}
+          onClose={() => setWhDeleteOpen(false)}
+          onConfirm={handleWhDelete}
           title="Удаление склада"
-          message={`Вы уверены, что хотите удалить склад "${selectedWarehouse?.name}"?`}
+          message={<>Удалить склад <b>{selectedWh?.name}</b>? Это действие необратимо.</>}
+          confirmText="Удалить"
+          confirmColor="error"
+          busy={whBusy}
         />
 
-        {/* Диалог создания/редактирования стеллажа */}
-        <RackDialog
-          open={rackDialogOpen}
-          onClose={() => setRackDialogOpen(false)}
-          onSave={handleRackSave}
-          initialData={selectedRack}
-        />
+        {}
+        <Dialog
+          open={rackDialog.open}
+          onClose={() => !rackBusy && setRackDialog({ open: false, warehouseId: null })}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle>Новый стеллаж</DialogTitle>
+          <form onSubmit={rackForm.handleSubmit(onRackSave)} noValidate>
+            <DialogContent>
+              <Stack spacing={2} mt={1}>
+                <TextField
+                  label="Название"
+                  fullWidth
+                  disabled={rackBusy}
+                  {...rackForm.register('name')}
+                  error={!!rackForm.formState.errors.name}
+                  helperText={rackForm.formState.errors.name?.message}
+                />
+                <Controller
+                  name="kind"
+                  control={rackForm.control}
+                  render={({ field }) => (
+                    <FormControl fullWidth error={!!rackForm.formState.errors.kind}>
+                      <InputLabel>Тип</InputLabel>
+                      <Select {...field} label="Тип" variant="outlined" disabled={rackBusy}>
+                        {RACK_KIND_OPTIONS.map((opt) => (
+                          <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                        ))}
+                      </Select>
+                      {rackForm.formState.errors.kind && (
+                        <FormHelperText>{rackForm.formState.errors.kind.message}</FormHelperText>
+                      )}
+                    </FormControl>
+                  )}
+                />
+                <Controller
+                  name="storageConditions"
+                  control={rackForm.control}
+                  render={({ field }) => (
+                    <FormControl fullWidth>
+                      <InputLabel>Условия хранения</InputLabel>
+                      <Select {...field} label="Условия хранения" variant="outlined" disabled={rackBusy}>
+                        {STORAGE_CONDITION_OPTIONS.map((opt) => (
+                          <MenuItem key={opt.value || 'none'} value={opt.value}>{opt.label}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
+                />
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setRackDialog({ open: false, warehouseId: null })} disabled={rackBusy}>
+                Отмена
+              </Button>
+              <Button variant="contained" type="submit" disabled={rackBusy}>
+                {rackBusy ? <CircularProgress size={20} color="inherit" /> : 'Создать'}
+              </Button>
+            </DialogActions>
+          </form>
+        </Dialog>
 
-        {/* Диалог удаления стеллажа */}
         <ConfirmDialog
-          open={rackDeleteDialogOpen}
-          onClose={() => setRackDeleteDialogOpen(false)}
+          open={rackDeleteState.open}
+          onClose={() => setRackDeleteState({ open: false, rack: null, warehouseId: null })}
           onConfirm={handleRackDelete}
           title="Удаление стеллажа"
-          message={`Вы уверены, что хотите удалить стеллаж "${selectedRack?.name}"?`}
+          message={<>Удалить стеллаж <b>{rackDeleteState.rack?.name}</b>? Все слоты (полки/ячейки/паллеты) внутри будут удалены вместе со стеллажом.</>}
+          confirmText="Удалить"
+          confirmColor="error"
+          busy={rackBusy}
         />
+
+        {}
+        <Dialog
+          open={slotDialog.open}
+          onClose={() => !slotBusy && setSlotDialog({ open: false, rack: null })}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle>
+            Новый слот ({slotDialog.rack ? RACK_KIND_LABEL[slotDialog.rack.kind] : ''})
+          </DialogTitle>
+          <form onSubmit={slotForm.handleSubmit(onSlotSave)} noValidate>
+            <DialogContent>
+              <Stack spacing={2} mt={1}>
+                {slotDialog.rack?.kind === 'SHELF' && (
+                  <TextField
+                    label="Грузоподъёмность, кг"
+                    type="number"
+                    fullWidth
+                    disabled={slotBusy}
+                    {...slotForm.register('shelfCapacityKg')}
+                    error={!!slotForm.formState.errors.shelfCapacityKg}
+                    helperText={slotForm.formState.errors.shelfCapacityKg?.message}
+                  />
+                )}
+
+                {slotDialog.rack?.kind === 'CELL' && (
+                  <TextField
+                    label="Макс. вес, кг"
+                    type="number"
+                    fullWidth
+                    disabled={slotBusy}
+                    {...slotForm.register('maxWeightKg')}
+                    error={!!slotForm.formState.errors.maxWeightKg}
+                    helperText={slotForm.formState.errors.maxWeightKg?.message}
+                  />
+                )}
+
+                {slotDialog.rack?.kind === 'FRIDGE' && (
+                  <Stack direction="row" spacing={2}>
+                    <TextField
+                      label="Темп. min, °C"
+                      type="number"
+                      fullWidth
+                      disabled={slotBusy}
+                      {...slotForm.register('minTemperatureC')}
+                      error={!!slotForm.formState.errors.minTemperatureC}
+                      helperText={slotForm.formState.errors.minTemperatureC?.message}
+                    />
+                    <TextField
+                      label="Темп. max, °C"
+                      type="number"
+                      fullWidth
+                      disabled={slotBusy}
+                      {...slotForm.register('maxTemperatureC')}
+                      error={!!slotForm.formState.errors.maxTemperatureC}
+                      helperText={slotForm.formState.errors.maxTemperatureC?.message}
+                    />
+                  </Stack>
+                )}
+
+                {slotDialog.rack?.kind === 'PALLET' ? (
+                  <>
+                    <TextField
+                      label="Кол-во паллетомест"
+                      type="number"
+                      fullWidth
+                      disabled={slotBusy}
+                      {...slotForm.register('palletPlaceCount')}
+                      error={!!slotForm.formState.errors.palletPlaceCount}
+                      helperText={slotForm.formState.errors.palletPlaceCount?.message}
+                    />
+                    <TextField
+                      label="Макс. вес, кг"
+                      type="number"
+                      fullWidth
+                      disabled={slotBusy}
+                      {...slotForm.register('maxWeightKg')}
+                      error={!!slotForm.formState.errors.maxWeightKg}
+                      helperText={slotForm.formState.errors.maxWeightKg?.message}
+                    />
+                    <Controller
+                      name="palletType"
+                      control={slotForm.control}
+                      render={({ field }) => (
+                        <FormControl fullWidth error={!!slotForm.formState.errors.palletType}>
+                          <InputLabel>Тип паллета</InputLabel>
+                          <Select {...field} label="Тип паллета" variant="outlined" disabled={slotBusy}>
+                            {PALLET_TYPE_OPTIONS.map((opt) => (
+                              <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                    />
+                  </>
+                ) : (
+                  <Stack direction="row" spacing={1}>
+                    <TextField
+                      label="Длина, см"
+                      type="number"
+                      fullWidth
+                      disabled={slotBusy}
+                      {...slotForm.register('lengthCm')}
+                      error={!!slotForm.formState.errors.lengthCm}
+                      helperText={slotForm.formState.errors.lengthCm?.message}
+                    />
+                    <TextField
+                      label="Ширина, см"
+                      type="number"
+                      fullWidth
+                      disabled={slotBusy}
+                      {...slotForm.register('widthCm')}
+                      error={!!slotForm.formState.errors.widthCm}
+                      helperText={slotForm.formState.errors.widthCm?.message}
+                    />
+                    <TextField
+                      label="Высота, см"
+                      type="number"
+                      fullWidth
+                      disabled={slotBusy}
+                      {...slotForm.register('heightCm')}
+                      error={!!slotForm.formState.errors.heightCm}
+                      helperText={slotForm.formState.errors.heightCm?.message}
+                    />
+                  </Stack>
+                )}
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setSlotDialog({ open: false, rack: null })} disabled={slotBusy}>
+                Отмена
+              </Button>
+              <Button variant="contained" type="submit" disabled={slotBusy}>
+                {slotBusy ? <CircularProgress size={20} color="inherit" /> : 'Добавить'}
+              </Button>
+            </DialogActions>
+          </form>
+        </Dialog>
       </Box>
     </Box>
   );
+};
+
+const RackSlotsTable = ({ kind, slots }) => {
+  const dims = (s) => `${s.lengthCm ?? '—'}×${s.widthCm ?? '—'}×${s.heightCm ?? '—'}`;
+
+  if (kind === 'SHELF') {
+    return (
+      <Table size="small" sx={{ bgcolor: 'background.default' }}>
+        <TableHead>
+          <TableRow>
+            <TableCell>ID полки</TableCell>
+            <TableCell align="right">Грузоподъёмность, кг</TableCell>
+            <TableCell>Габариты Д×Ш×В, см</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {slots.map((s) => (
+            <TableRow key={s.shelfId}>
+              <TableCell>
+                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                  {String(s.shelfId).slice(0, 8)}…
+                </Typography>
+              </TableCell>
+              <TableCell align="right">{s.shelfCapacityKg ?? '—'}</TableCell>
+              <TableCell>{dims(s)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    );
+  }
+
+  if (kind === 'CELL') {
+    return (
+      <Table size="small" sx={{ bgcolor: 'background.default' }}>
+        <TableHead>
+          <TableRow>
+            <TableCell>ID ячейки</TableCell>
+            <TableCell align="right">Макс. вес, кг</TableCell>
+            <TableCell>Габариты Д×Ш×В, см</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {slots.map((s) => (
+            <TableRow key={s.cellId}>
+              <TableCell>
+                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                  {String(s.cellId).slice(0, 8)}…
+                </Typography>
+              </TableCell>
+              <TableCell align="right">{s.maxWeightKg ?? '—'}</TableCell>
+              <TableCell>{dims(s)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    );
+  }
+
+  if (kind === 'FRIDGE') {
+    return (
+      <Table size="small" sx={{ bgcolor: 'background.default' }}>
+        <TableHead>
+          <TableRow>
+            <TableCell>ID</TableCell>
+            <TableCell align="right">Темп. min, °C</TableCell>
+            <TableCell align="right">Темп. max, °C</TableCell>
+            <TableCell>Габариты Д×Ш×В, см</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {slots.map((s) => (
+            <TableRow key={s.fridgeId || s.cellId}>
+              <TableCell>
+                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                  {String(s.fridgeId || s.cellId).slice(0, 8)}…
+                </Typography>
+              </TableCell>
+              <TableCell align="right">{s.minTemperatureC ?? '—'}</TableCell>
+              <TableCell align="right">{s.maxTemperatureC ?? '—'}</TableCell>
+              <TableCell>{dims(s)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    );
+  }
+
+  if (kind === 'PALLET') {
+    return (
+      <Table size="small" sx={{ bgcolor: 'background.default' }}>
+        <TableHead>
+          <TableRow>
+            <TableCell>ID места</TableCell>
+            <TableCell>Габариты Д×Ш×В, см</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {slots.map((s) => (
+            <TableRow key={s.placeId}>
+              <TableCell>
+                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                  {String(s.placeId).slice(0, 8)}…
+                </Typography>
+              </TableCell>
+              <TableCell>{dims(s)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    );
+  }
+
+  return null;
 };
 
 export default OrganizationPage;

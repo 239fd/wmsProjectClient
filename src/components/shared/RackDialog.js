@@ -27,17 +27,17 @@ const RackDialog = ({ open, onClose, onSave, initialData = null }) => {
     initialData || {
       name: '',
       kind: 'SHELF',
-      // Для SHELF
+
       shelf_count: '',
       shelf_capacity_kg: '',
-      // Для CELL
+
       cell_count: '',
       max_weight_kg: '',
-      // Для FRIDGE
+
       temperature_c: '',
-      // Для PALLET
+
       pallet_place_count: '',
-      // Общие размеры (для одной полки/ячейки или всего стеллажа)
+
       length_cm: '',
       width_cm: '',
       height_cm: '',

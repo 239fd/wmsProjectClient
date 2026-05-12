@@ -1,27 +1,27 @@
 import axios from 'axios';
+import { notifyNetworkError } from '../utils/notifyBridge';
 
-// Базовый URL API
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8765';
 
-// Функция очистки localStorage
 export const clearAuthData = () => {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('user');
+  localStorage.removeItem('persist:auth');
 };
 
-// Создаём экземпляр axios
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
   withCredentials: true,
 });
 
-// Интерсептор запросов - добавляем токен
 api.interceptors.request.use(
   (config) => {
+    if (config.headers && config.headers._skipAuth) {
+      delete config.headers._skipAuth;
+      return config;
+    }
     const token = localStorage.getItem('accessToken');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -31,52 +31,74 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Интерсептор ответов - обработка ошибок и refresh токена
+let refreshPromise = null;
+
+const performRefresh = () => {
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!refreshToken) return Promise.reject(new Error('No refresh token'));
+
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post(`${API_BASE_URL}/api/auth/refresh`, { refreshToken })
+      .then((response) => {
+        const { accessToken, refreshToken: newRefreshToken } = response.data;
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', newRefreshToken);
+        return accessToken;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+};
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config || {};
 
-    // Если 401 и не пробовали refresh (и это не запрос на login/register)
-    const isAuthEndpoint = originalRequest.url?.includes('/auth/login') ||
-                           originalRequest.url?.includes('/auth/register');
+    const isAuthEndpoint = originalRequest.url?.includes('/auth/login')
+      || originalRequest.url?.includes('/auth/register')
+      || originalRequest.url?.includes('/auth/refresh');
 
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true;
 
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (refreshToken) {
-        try {
-          const response = await axios.post(`${API_BASE_URL}/api/auth/refresh`, {
-            refreshToken,
-          });
+      try {
+        const newAccessToken = await performRefresh();
+        originalRequest.headers = originalRequest.headers || {};
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        return api(originalRequest);
+      } catch (refreshError) {
 
-          const { accessToken, refreshToken: newRefreshToken } = response.data;
-          localStorage.setItem('accessToken', accessToken);
-          localStorage.setItem('refreshToken', newRefreshToken);
-
-          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-          return api(originalRequest);
-        } catch (refreshError) {
-          // Refresh не удался - очищаем токены, но НЕ редиректим
-          clearAuthData();
-          return Promise.reject(refreshError);
+        clearAuthData();
+        if (typeof window !== 'undefined') {
+          const path = window.location.pathname;
+          const onGuestPage = path === '/' || path.startsWith('/login') || path.startsWith('/register') || path.startsWith('/auth/');
+          if (!onGuestPage) {
+            window.location.href = '/login';
+          }
         }
+        return Promise.reject(refreshError);
       }
     }
 
-    // Извлекаем сообщение об ошибке из разных форматов ответа
-    let message = 'Произошла ошибка';
+    const isNetworkError =
+      !error.response && (error.code === 'ERR_NETWORK' || error.message === 'Network Error');
 
+    let message = 'Произошла ошибка';
     if (error.response?.data) {
       const data = error.response.data;
-      message = data.message || data.error || data.detail ||
-                (typeof data === 'string' ? data : message);
+      message = data.message || data.error || data.detail
+        || (typeof data === 'string' ? data : message);
+    } else if (isNetworkError) {
+      message = 'Сервер недоступен. Проверьте подключение.';
+      notifyNetworkError();
     } else if (error.message) {
       message = error.message;
     }
 
-    // Добавляем статус код для отладки
     if (error.response?.status) {
       console.error(`API Error [${error.response.status}]:`, message);
     }
@@ -84,10 +106,9 @@ api.interceptors.response.use(
     const customError = new Error(message);
     customError.status = error.response?.status;
     customError.data = error.response?.data;
-
+    customError.isNetworkError = isNetworkError;
     return Promise.reject(customError);
   }
 );
 
 export default api;
-

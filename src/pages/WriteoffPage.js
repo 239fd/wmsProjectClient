@@ -1,378 +1,411 @@
-import React, { useState } from 'react';
-import { Box, Typography, Paper, Button, TextField, Grid, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, MenuItem, Chip } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Box, Typography, Paper, Button, Stack, MenuItem, Select, InputLabel, FormControl,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, CircularProgress, Alert, Chip, Tabs, Tab, FormHelperText,
+} from '@mui/material';
+import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
+import { useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import { useForm, Controller } from 'react-hook-form';
+import { yupResolver } from '@hookform/resolvers/yup';
+import { selectUser } from '../store/slices/authSlice';
+import productService from '../services/productService';
+import { useWarehouses, useEmployees } from '../hooks';
+import { useSnackbar } from '../context/SnackbarContext';
+import EmptyState from '../components/shared/EmptyState';
+import DocumentDownloadButton from '../components/shared/DocumentDownloadButton';
+import { writeOffSchema } from '../validation/schemas';
 
-const reasons = [
-    'Физический износ',
-    'Моральный износ',
-    'Порча',
-    'Истёк срок годности',
-    'Брак',
-    'Утеря',
-    'Хищение',
-    'Стихийное бедствие',
-    'Выявлено при инвентаризации',
-    'Недостача сверх норм естественной убыли',
+const REASONS = [
+  { value: 'DAMAGE', label: 'Порча' },
+  { value: 'EXPIRED', label: 'Истёк срок годности' },
+  { value: 'SHORTAGE', label: 'Недостача' },
+  { value: 'OTHER', label: 'Другое' },
 ];
 
-const units = ['шт', 'кг', 'л', 'м', 'м²', 'м³', 'упак'];
-
-const initialItem = { name: '', invNumber: '', unit: 'шт', quantity: '', price: '', reason: '', notes: '' };
+const EMPTY_FORM = {
+  quantity: '',
+  reason: 'DAMAGE',
+  basis: '',
+  responsibleUserId: '',
+  commissionMembers: [],
+  cellId: '',
+  batchId: '',
+  notes: '',
+};
 
 const WriteoffPage = () => {
-    const [writeoffs, setWriteoffs] = useState([
-        { id: 1, actNumber: 'СП-001', date: '2025-10-10', status: 'Утверждено', responsible: 'Иванов И.И.', sum: '15000.00' },
-        { id: 2, actNumber: 'СП-002', date: '2025-10-16', status: 'Утверждено', responsible: 'Петров П.П.', sum: '8500.00' },
-    ]);
-    const [form, setForm] = useState({
-        actNumber: '',
-        date: '',
-        responsible: '',
-        commission: '',
-        basis: '',
-        items: [ { ...initialItem } ]
+  const navigate = useNavigate();
+  const user = useSelector(selectUser);
+  const { notify } = useSnackbar();
+  const orgId = user?.organizationId;
+  const userId = user?.userId;
+
+  const { data: warehouses, loading: whLoading } = useWarehouses();
+  const { data: employees } = useEmployees();
+  const [warehouseId, setWarehouseId] = useState('');
+  const [tab, setTab] = useState(0);
+
+  const [inventory, setInventory] = useState([]);
+  const [marked, setMarked] = useState([]);
+  const [listLoading, setListLoading] = useState(false);
+
+  const [dialog, setDialog] = useState({ open: false, item: null });
+  const [busy, setBusy] = useState(false);
+  const [lastResult, setLastResult] = useState(null);
+
+  const {
+    register, handleSubmit, control, reset,
+    formState: { errors },
+  } = useForm({
+    resolver: yupResolver(writeOffSchema),
+    defaultValues: EMPTY_FORM,
+    mode: 'onTouched',
+  });
+
+  useEffect(() => {
+    if (user && !orgId) navigate('/main/organization?firstTime=true', { replace: true });
+  }, [user, orgId, navigate]);
+
+  useEffect(() => {
+    if (!warehouseId && warehouses.length > 0) {
+      setWarehouseId(warehouses[0].warehouseId || warehouses[0].id);
+    }
+  }, [warehouses, warehouseId]);
+
+  const loadList = useCallback(async () => {
+    if (!warehouseId) return;
+    setListLoading(true);
+    try {
+      if (tab === 0) {
+        const data = await productService.getInventory(warehouseId);
+        setInventory(Array.isArray(data) ? data : (data?.content || []));
+      } else {
+        const data = await productService.getMarkedForWriteOff(warehouseId);
+        setMarked(Array.isArray(data) ? data : (data?.content || []));
+      }
+    } catch (err) {
+      notify(err.message || 'Не удалось загрузить список', 'error');
+      if (tab === 0) setInventory([]); else setMarked([]);
+    } finally {
+      setListLoading(false);
+    }
+  }, [warehouseId, tab, notify]);
+
+  useEffect(() => { loadList(); }, [loadList]);
+
+  const handleOpen = (item) => {
+    reset({
+      ...EMPTY_FORM,
+      responsibleUserId: userId || '',
+      cellId: item.cellId || '',
+      batchId: item.batchId || '',
     });
-    const [errors, setErrors] = useState({});
+    setDialog({ open: true, item });
+  };
 
-    const handleFormChange = (e) => {
-        setForm({ ...form, [e.target.name]: e.target.value });
-    };
+  const onSubmit = async (values) => {
+    if (!dialog.item) return;
+    setBusy(true);
+    try {
+      const res = await productService.writeOff({
+        productId: dialog.item.productId,
+        warehouseId,
+        batchId: values.batchId || null,
+        cellId: values.cellId || null,
+        quantity: values.quantity,
+        reason: values.reason,
+        basis: values.basis || null,
+        responsibleUserId: values.responsibleUserId || null,
+        commissionMembers: values.commissionMembers?.length > 0 ? values.commissionMembers : null,
+        userId,
+        notes: values.notes || null,
+      });
+      notify('Списание зафиксировано');
+      setLastResult({
+        productName: dialog.item?.productName,
+        quantity: values.quantity,
+        operationId: res?.operationId,
+        documentId: res?.documentId,
+      });
+      setDialog({ open: false, item: null });
+      await loadList();
+    } catch (err) {
+      notify(err.message || 'Не удалось выполнить списание', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
 
-    const handleItemChange = (idx, e) => {
-        const items = form.items.map((p, i) => i === idx ? { ...p, [e.target.name]: e.target.value } : p);
-        setForm({ ...form, items });
-    };
+  if (!user || !orgId) return null;
 
-    const handleAddItem = () => {
-        setForm({ ...form, items: [ ...form.items, { ...initialItem } ] });
-    };
-
-    const handleRemoveItem = (idx) => {
-        setForm({ ...form, items: form.items.filter((_, i) => i !== idx) });
-    };
-
-    const validate = () => {
-        const newErrors = {};
-        if (!form.actNumber) newErrors.actNumber = 'Укажите номер акта';
-        if (!form.date) newErrors.date = 'Укажите дату';
-        if (!form.responsible) newErrors.responsible = 'Укажите ответственного';
-        if (!form.commission) newErrors.commission = 'Укажите состав комиссии';
-        if (!form.basis) newErrors.basis = 'Укажите основание для списания';
-        form.items.forEach((p, i) => {
-            if (!p.name) newErrors[`item_name_${i}`] = 'Название обязательно';
-            if (!p.invNumber) newErrors[`item_invNumber_${i}`] = 'Инв. номер обязателен';
-            if (!p.quantity) newErrors[`item_quantity_${i}`] = 'Количество обязательно';
-            if (!p.price) newErrors[`item_price_${i}`] = 'Балансовая стоимость обязательна';
-            if (!p.reason) newErrors[`item_reason_${i}`] = 'Причина обязательна';
-        });
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (!validate()) return;
-        const totalSum = calculateTotalSum();
-        setWriteoffs([
-            ...writeoffs,
-            {
-                id: writeoffs.length + 1,
-                actNumber: form.actNumber,
-                date: form.date,
-                responsible: form.responsible,
-                status: 'Утверждено',
-                sum: totalSum.toFixed(2),
-            },
-        ]);
-        setForm({
-            actNumber: '',
-            date: '',
-            responsible: '',
-            commission: '',
-            basis: '',
-            items: [ { ...initialItem } ]
-        });
-        setErrors({});
-    };
-
-    const calculateTotalSum = () => {
-        return form.items.reduce((sum, item) => {
-            if (item.quantity && item.price) {
-                return sum + (Number(item.quantity) * Number(item.price));
-            }
-            return sum;
-        }, 0);
-    };
-
+  if (whLoading) {
     return (
-        <Box sx={{ width: '100%', bgcolor: 'background.default', minHeight: '100vh', py: 4 }}>
-            <Box sx={{ width: '100%', maxWidth: 1400, mx: 'auto', px: { xs: 2, md: 4 } }}>
-                <Typography variant="h4" fontWeight={900} mb={3} textAlign="center">
-                    Списание материальных ценностей
-                </Typography>
-
-                <Paper sx={{ p: { xs: 2, md: 4 }, mb: 4 }}>
-                    <Typography variant="h6" fontWeight={700} mb={2}>
-                        Новый акт списания
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" mb={3}>
-                        Оформление акта списания в соответствии с законодательством РБ
-                    </Typography>
-
-                    <form onSubmit={handleSubmit}>
-                        <Grid container spacing={2}>
-                            <Grid item xs={12} md={3}>
-                                <TextField
-                                    label="Номер акта"
-                                    name="actNumber"
-                                    value={form.actNumber}
-                                    onChange={handleFormChange}
-                                    fullWidth
-                                    placeholder="СП-001"
-                                    error={!!errors.actNumber}
-                                    helperText={errors.actNumber}
-                                />
-                            </Grid>
-                            <Grid item xs={12} md={3}>
-                                <TextField
-                                    label="Дата"
-                                    name="date"
-                                    type="date"
-                                    value={form.date}
-                                    onChange={handleFormChange}
-                                    fullWidth
-                                    InputLabelProps={{ shrink: true }}
-                                    error={!!errors.date}
-                                    helperText={errors.date}
-                                />
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                                <TextField
-                                    label="Материально ответственное лицо"
-                                    name="responsible"
-                                    value={form.responsible}
-                                    onChange={handleFormChange}
-                                    fullWidth
-                                    placeholder="Иванов И.И."
-                                    error={!!errors.responsible}
-                                    helperText={errors.responsible}
-                                />
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                                <TextField
-                                    label="Состав комиссии"
-                                    name="commission"
-                                    value={form.commission}
-                                    onChange={handleFormChange}
-                                    fullWidth
-                                    placeholder="Петров П.П., Сидоров С.С."
-                                    error={!!errors.commission}
-                                    helperText={errors.commission}
-                                />
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                                <TextField
-                                    label="Основание для списания"
-                                    name="basis"
-                                    value={form.basis}
-                                    onChange={handleFormChange}
-                                    fullWidth
-                                    placeholder="Приказ №123 от 01.10.2025"
-                                    error={!!errors.basis}
-                                    helperText={errors.basis}
-                                />
-                            </Grid>
-                        </Grid>
-
-                        <Box mt={3}>
-                            <Typography fontWeight={700} mb={1}>Позиции к списанию</Typography>
-                            <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 500 }}>
-                                <Table size="small" stickyHeader>
-                                    <TableHead>
-                                        <TableRow>
-                                            <TableCell sx={{ minWidth: 200 }}>Наименование</TableCell>
-                                            <TableCell sx={{ minWidth: 120 }}>Инв. номер</TableCell>
-                                            <TableCell sx={{ minWidth: 80 }}>Ед. изм.</TableCell>
-                                            <TableCell sx={{ minWidth: 100 }}>Количество</TableCell>
-                                            <TableCell sx={{ minWidth: 120 }}>Цена (руб.)</TableCell>
-                                            <TableCell sx={{ minWidth: 120 }}>Сумма (руб.)</TableCell>
-                                            <TableCell sx={{ minWidth: 150 }}>Причина</TableCell>
-                                            <TableCell sx={{ minWidth: 200 }}>Примечание</TableCell>
-                                            <TableCell sx={{ width: 50 }}></TableCell>
-                                        </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                        {form.items.map((p, idx) => {
-                                            const itemSum = p.quantity && p.price ? (Number(p.quantity) * Number(p.price)).toFixed(2) : '';
-                                            return (
-                                                <TableRow key={idx}>
-                                                    <TableCell>
-                                                        <TextField
-                                                            name="name"
-                                                            value={p.name}
-                                                            onChange={e => handleItemChange(idx, e)}
-                                                            size="small"
-                                                            fullWidth
-                                                            error={!!errors[`item_name_${idx}`]}
-                                                            helperText={errors[`item_name_${idx}`]}
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <TextField
-                                                            name="invNumber"
-                                                            value={p.invNumber}
-                                                            onChange={e => handleItemChange(idx, e)}
-                                                            size="small"
-                                                            fullWidth
-                                                            error={!!errors[`item_invNumber_${idx}`]}
-                                                            helperText={errors[`item_invNumber_${idx}`]}
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <TextField
-                                                            select
-                                                            name="unit"
-                                                            value={p.unit}
-                                                            onChange={e => handleItemChange(idx, e)}
-                                                            size="small"
-                                                            fullWidth
-                                                        >
-                                                            {units.map(u => <MenuItem key={u} value={u}>{u}</MenuItem>)}
-                                                        </TextField>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <TextField
-                                                            name="quantity"
-                                                            value={p.quantity}
-                                                            onChange={e => handleItemChange(idx, e)}
-                                                            size="small"
-                                                            type="number"
-                                                            fullWidth
-                                                            inputProps={{ step: "0.01", min: "0" }}
-                                                            error={!!errors[`item_quantity_${idx}`]}
-                                                            helperText={errors[`item_quantity_${idx}`]}
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <TextField
-                                                            name="price"
-                                                            value={p.price}
-                                                            onChange={e => handleItemChange(idx, e)}
-                                                            size="small"
-                                                            type="number"
-                                                            fullWidth
-                                                            inputProps={{ step: "0.01", min: "0" }}
-                                                            error={!!errors[`item_price_${idx}`]}
-                                                            helperText={errors[`item_price_${idx}`]}
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <TextField
-                                                            value={itemSum}
-                                                            size="small"
-                                                            disabled
-                                                            fullWidth
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <TextField
-                                                            select
-                                                            name="reason"
-                                                            value={p.reason}
-                                                            onChange={e => handleItemChange(idx, e)}
-                                                            size="small"
-                                                            fullWidth
-                                                            error={!!errors[`item_reason_${idx}`]}
-                                                            helperText={errors[`item_reason_${idx}`]}
-                                                        >
-                                                            <MenuItem value="">Выберите...</MenuItem>
-                                                            {reasons.map(r => <MenuItem key={r} value={r}>{r}</MenuItem>)}
-                                                        </TextField>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <TextField
-                                                            name="notes"
-                                                            value={p.notes}
-                                                            onChange={e => handleItemChange(idx, e)}
-                                                            size="small"
-                                                            fullWidth
-                                                            placeholder="Дополнительная информация"
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <IconButton
-                                                            onClick={() => handleRemoveItem(idx)}
-                                                            disabled={form.items.length === 1}
-                                                            size="small"
-                                                        >
-                                                            <DeleteIcon />
-                                                        </IconButton>
-                                                    </TableCell>
-                                                </TableRow>
-                                            );
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-                            <Box display="flex" justifyContent="space-between" alignItems="center" mt={2}>
-                                <Button startIcon={<AddIcon />} onClick={handleAddItem}>
-                                    Добавить позицию
-                                </Button>
-                                <Box>
-                                    <Typography variant="body1" fontWeight={700}>
-                                        Итого к списанию: {calculateTotalSum().toFixed(2)} руб.
-                                    </Typography>
-                                </Box>
-                            </Box>
-                        </Box>
-
-                        <Box mt={3} textAlign="right">
-                            <Button type="submit" variant="contained" color="primary" size="large">
-                                Сохранить акт списания
-                            </Button>
-                        </Box>
-                    </form>
-                </Paper>
-
-                <Paper sx={{ p: { xs: 2, md: 4 } }}>
-                    <Typography variant="h6" fontWeight={700} mb={2}>
-                        История актов списания
-                    </Typography>
-                    <TableContainer>
-                        <Table size="small">
-                            <TableHead>
-                                <TableRow>
-                                    <TableCell>Номер акта</TableCell>
-                                    <TableCell>Дата</TableCell>
-                                    <TableCell>Ответственный</TableCell>
-                                    <TableCell>Сумма (руб.)</TableCell>
-                                    <TableCell>Статус</TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {writeoffs.map(s => (
-                                    <TableRow key={s.id} hover sx={{ cursor: 'pointer' }}>
-                                        <TableCell fontWeight={600}>{s.actNumber}</TableCell>
-                                        <TableCell>{s.date}</TableCell>
-                                        <TableCell>{s.responsible}</TableCell>
-                                        <TableCell>{s.sum}</TableCell>
-                                        <TableCell>
-                                            <Chip
-                                                label={s.status}
-                                                size="small"
-                                                color={s.status === 'Утверждено' ? 'success' : 'warning'}
-                                            />
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </TableContainer>
-                </Paper>
-            </Box>
-        </Box>
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
+        <CircularProgress />
+      </Box>
     );
+  }
+
+  return (
+    <Box sx={{ width: '100%', bgcolor: '#f5f5f5', minHeight: '100vh', pt: 4, pb: 6 }}>
+      <Box sx={{ width: '100%', maxWidth: 1440, mx: 'auto', px: { xs: 2, md: 3 } }}>
+        <Typography variant="h4" fontWeight={700} mb={3}>Списание товаров</Typography>
+
+        {lastResult && (
+          <Alert
+            severity="success"
+            sx={{ mb: 3, borderRadius: 2 }}
+            onClose={() => setLastResult(null)}
+            action={
+              <DocumentDownloadButton
+                documentId={lastResult.documentId}
+                filename={`writeoff-${lastResult.operationId}.pdf`}
+              />
+            }
+          >
+            Списано: <b>{lastResult.productName || '—'}</b> · {lastResult.quantity}
+          </Alert>
+        )}
+
+        <Paper sx={{ p: 3, mb: 3, borderRadius: 3 }}>
+          <FormControl size="small" sx={{ minWidth: 280 }}>
+            <InputLabel>Склад</InputLabel>
+            <Select
+              value={warehouseId}
+              label="Склад"
+              variant="outlined"
+              onChange={(e) => setWarehouseId(e.target.value)}
+            >
+              {warehouses.length === 0 ? (
+                <MenuItem value="" disabled>Нет складов</MenuItem>
+              ) : (
+                warehouses.map((w) => (
+                  <MenuItem key={w.warehouseId || w.id} value={w.warehouseId || w.id}>
+                    {w.name}
+                  </MenuItem>
+                ))
+              )}
+            </Select>
+          </FormControl>
+        </Paper>
+
+        <Paper sx={{ borderRadius: 3 }}>
+          <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tab label="Все остатки" />
+            <Tab label="Помеченные к списанию" />
+          </Tabs>
+
+          {listLoading ? (
+            <Box display="flex" justifyContent="center" py={6}>
+              <CircularProgress />
+            </Box>
+          ) : tab === 0 ? (
+            inventory.length === 0 ? (
+              <EmptyState title="На этом складе нет товаров" sx={{ py: 6 }} />
+            ) : (
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Товар</TableCell>
+                      <TableCell>SKU</TableCell>
+                      <TableCell align="right">Остаток</TableCell>
+                      <TableCell align="right">Доступно</TableCell>
+                      <TableCell>Статус</TableCell>
+                      <TableCell align="right">Действия</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {inventory.map((item) => (
+                      <TableRow key={item.inventoryId} hover>
+                        <TableCell>{item.productName || item.productId}</TableCell>
+                        <TableCell>{item.unitSku || '—'}</TableCell>
+                        <TableCell align="right">{item.quantity ?? 0}</TableCell>
+                        <TableCell align="right">{item.availableQuantity ?? 0}</TableCell>
+                        <TableCell>{item.status && <Chip label={item.status} size="small" />}</TableCell>
+                        <TableCell align="right">
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            startIcon={<RemoveCircleOutlineIcon />}
+                            onClick={() => handleOpen(item)}
+                          >
+                            Списать
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )
+          ) : (
+            marked.length === 0 ? (
+              <EmptyState
+                title="Помеченных к списанию позиций нет"
+                description="Сюда попадают товары с инвентаризации, помеченные флагом 'списать' при подсчёте"
+                sx={{ py: 6 }}
+              />
+            ) : (
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Товар</TableCell>
+                      <TableCell>SKU</TableCell>
+                      <TableCell align="right">Количество</TableCell>
+                      <TableCell>Причина</TableCell>
+                      <TableCell align="right">Действия</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {marked.map((item, i) => (
+                      <TableRow key={item.inventoryId || item.productId || i} hover>
+                        <TableCell>{item.productName || item.productId || '—'}</TableCell>
+                        <TableCell>{item.unitSku || item.sku || '—'}</TableCell>
+                        <TableCell align="right">{item.quantity ?? '—'}</TableCell>
+                        <TableCell>{item.reason || '—'}</TableCell>
+                        <TableCell align="right">
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="error"
+                            onClick={() => handleOpen({ ...item, productId: item.productId })}
+                          >
+                            Списать
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )
+          )}
+        </Paper>
+
+        {}
+        <Dialog
+          open={dialog.open}
+          onClose={() => !busy && setDialog({ open: false, item: null })}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+            Списание: {dialog.item?.productName || dialog.item?.productId}
+          </DialogTitle>
+          <form onSubmit={handleSubmit(onSubmit)} noValidate>
+            <DialogContent>
+              <Stack spacing={2} mt={1}>
+                <TextField
+                  label="Количество"
+                  type="number"
+                  fullWidth
+                  inputProps={{ step: '0.01', min: '0' }}
+                  disabled={busy}
+                  {...register('quantity')}
+                  error={!!errors.quantity}
+                  helperText={
+                    errors.quantity?.message
+                    || (dialog.item?.availableQuantity != null ? `Доступно: ${dialog.item.availableQuantity}` : null)
+                  }
+                />
+                <Controller
+                  name="reason"
+                  control={control}
+                  render={({ field }) => (
+                    <FormControl fullWidth error={!!errors.reason}>
+                      <InputLabel>Причина</InputLabel>
+                      <Select {...field} label="Причина" variant="outlined" disabled={busy}>
+                        {REASONS.map((r) => (
+                          <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>
+                        ))}
+                      </Select>
+                      {errors.reason && <FormHelperText>{errors.reason.message}</FormHelperText>}
+                    </FormControl>
+                  )}
+                />
+                <TextField
+                  label="Основание (приказ/документ)"
+                  fullWidth
+                  disabled={busy}
+                  {...register('basis')}
+                  error={!!errors.basis}
+                  helperText={errors.basis?.message}
+                />
+                <Controller
+                  name="responsibleUserId"
+                  control={control}
+                  render={({ field }) => (
+                    <FormControl fullWidth>
+                      <InputLabel>Ответственный</InputLabel>
+                      <Select {...field} label="Ответственный" variant="outlined" disabled={busy}>
+                        <MenuItem value="">— не назначен —</MenuItem>
+                        {employees.map((emp) => (
+                          <MenuItem key={emp.userId} value={emp.userId}>
+                            {emp.username || emp.email} · {emp.role}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
+                />
+                <Controller
+                  name="commissionMembers"
+                  control={control}
+                  render={({ field }) => (
+                    <FormControl fullWidth>
+                      <InputLabel>Комиссия</InputLabel>
+                      <Select
+                        {...field}
+                        multiple
+                        label="Комиссия"
+                        variant="outlined"
+                        disabled={busy}
+                        renderValue={(selected) => `${selected.length} участник(а)`}
+                      >
+                        {employees.map((emp) => (
+                          <MenuItem key={emp.userId} value={emp.userId}>
+                            {emp.username || emp.email} · {emp.role}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
+                />
+                <TextField
+                  label="Примечания"
+                  multiline
+                  rows={2}
+                  fullWidth
+                  disabled={busy}
+                  {...register('notes')}
+                  error={!!errors.notes}
+                  helperText={errors.notes?.message}
+                />
+                <Alert severity="warning">
+                  Списание необратимо. Будет сформирован акт; скачать его можно будет
+                  в разделе «Документы» (в следующей итерации).
+                </Alert>
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setDialog({ open: false, item: null })} disabled={busy}>
+                Отмена
+              </Button>
+              <Button variant="contained" color="error" type="submit" disabled={busy}>
+                {busy ? <CircularProgress size={20} color="inherit" /> : 'Списать'}
+              </Button>
+            </DialogActions>
+          </form>
+        </Dialog>
+      </Box>
+    </Box>
+  );
 };
 
 export default WriteoffPage;

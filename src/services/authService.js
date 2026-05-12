@@ -1,4 +1,4 @@
-// Auth Service - сервис аутентификации
+
 import httpService from './httpService';
 import { API_ENDPOINTS } from '../config/api';
 
@@ -12,23 +12,44 @@ const authService = {
 
     if (response.accessToken) {
       httpService.setTokens(response.accessToken, response.refreshToken);
-      localStorage.setItem('user', JSON.stringify(response.user));
+
+      const user = await httpService.get(API_ENDPOINTS.AUTH.ME);
+      localStorage.setItem('user', JSON.stringify(user));
+      response.user = user;
     }
 
     return response;
   },
 
-  async register(userData) {
-
+  async registerDirector(payload) {
     const response = await httpService.post(
-      API_ENDPOINTS.AUTH.REGISTER,
-      userData,
+      API_ENDPOINTS.AUTH.REGISTER_DIRECTOR,
+      payload,
       { includeAuth: false }
     );
 
     if (response.accessToken) {
       httpService.setTokens(response.accessToken, response.refreshToken);
-      localStorage.setItem('user', JSON.stringify(response.user));
+      const user = await httpService.get(API_ENDPOINTS.AUTH.ME);
+      localStorage.setItem('user', JSON.stringify(user));
+      response.user = user;
+    }
+
+    return response;
+  },
+
+  async registerByInvitation(payload) {
+    const response = await httpService.post(
+      API_ENDPOINTS.AUTH.REGISTER_INVITATION,
+      payload,
+      { includeAuth: false }
+    );
+
+    if (response.accessToken) {
+      httpService.setTokens(response.accessToken, response.refreshToken);
+      const user = await httpService.get(API_ENDPOINTS.AUTH.ME);
+      localStorage.setItem('user', JSON.stringify(user));
+      response.user = user;
     }
 
     return response;
@@ -57,7 +78,7 @@ const authService = {
     return !!localStorage.getItem('accessToken');
   },
 
-  // OAuth методы
+
   getGoogleAuthUrl() {
     return API_ENDPOINTS.OAUTH.GOOGLE;
   },
@@ -75,7 +96,9 @@ const authService = {
 
     if (response.accessToken) {
       httpService.setTokens(response.accessToken, response.refreshToken);
-      localStorage.setItem('user', JSON.stringify(response.user));
+      const user = await httpService.get(API_ENDPOINTS.AUTH.ME);
+      localStorage.setItem('user', JSON.stringify(user));
+      response.user = user;
     }
 
     return response;

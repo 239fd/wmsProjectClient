@@ -1,18 +1,19 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
-import { selectIsAuthenticated } from '../store/slices/authSlice';
+import { useSelector, useDispatch } from 'react-redux';
+import { selectIsAuthenticated, selectUser, bootstrapUser } from '../store/slices/authSlice';
 import { Box, CircularProgress } from '@mui/material';
 
-// Layouts
+
 import GuestLayout from '../components/layout/GuestLayout';
 import MainLayout from '../components/layout/MainLayout';
 
-// Pages
+
 import HomePage from '../pages/HomePage';
 import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
-import RoleSelectPage from '../pages/RoleSelectPage';
+import RegisterDirectorPage from '../pages/RegisterDirectorPage';
+import RegisterByInvitationPage from '../pages/RegisterByInvitationPage';
 import OAuthCallbackPage from '../pages/OAuthCallbackPage';
 import MainPage from '../pages/MainPage';
 import ProfilePage from '../pages/ProfilePage';
@@ -25,8 +26,12 @@ import InventoryPage from '../pages/InventoryPage';
 import WriteoffPage from '../pages/WriteoffPage';
 import RevaluationPage from '../pages/RevaluationPage';
 import AnalyticsPage from '../pages/AnalyticsPage';
+import SuppliersPage from '../pages/SuppliersPage';
+import SuppliesPage from '../pages/SuppliesPage';
+import DocumentsPage from '../pages/DocumentsPage';
+import ErpExtractorPage from '../pages/ErpExtractorPage';
 
-// Защищённый маршрут (только для авторизованных)
+
 const ProtectedRoute = ({ children }) => {
   const isAuthenticated = useSelector(selectIsAuthenticated);
 
@@ -37,7 +42,19 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-// Маршрут только для гостей
+
+const RoleGuard = ({ allowed, children }) => {
+  const user = useSelector(selectUser);
+  const userRole = user?.role || (Array.isArray(user?.roles) ? user.roles[0] : undefined);
+
+  if (!user || !allowed.includes(userRole)) {
+    return <Navigate to="/main" replace />;
+  }
+
+  return children;
+};
+
+
 const GuestRoute = ({ children }) => {
   const isAuthenticated = useSelector(selectIsAuthenticated);
 
@@ -49,15 +66,23 @@ const GuestRoute = ({ children }) => {
 };
 
 const AppRouter = () => {
+  const dispatch = useDispatch();
+  const isAuthenticated = useSelector(selectIsAuthenticated);
+  const user = useSelector(selectUser);
+
+
+  useEffect(() => {
+    if (isAuthenticated && !user) {
+      dispatch(bootstrapUser());
+    }
+  }, [isAuthenticated, user, dispatch]);
+
   return (
     <Routes>
-      {/* OAuth Callback - доступен всегда */}
+      {}
       <Route path="/auth/callback" element={<OAuthCallbackPage />} />
 
-      {/* Выбор роли - доступен при наличии данных регистрации */}
-      <Route path="/role" element={<RoleSelectPage />} />
-
-      {/* Публичные маршруты с GuestLayout */}
+      {}
       <Route path="/" element={<GuestLayout />}>
         <Route index element={<HomePage />} />
         <Route path="login" element={
@@ -70,9 +95,19 @@ const AppRouter = () => {
             <RegisterPage />
           </GuestRoute>
         } />
+        <Route path="register/director" element={
+          <GuestRoute>
+            <RegisterDirectorPage />
+          </GuestRoute>
+        } />
+        <Route path="register/invitation" element={
+          <GuestRoute>
+            <RegisterByInvitationPage />
+          </GuestRoute>
+        } />
       </Route>
 
-      {/* Защищённые маршруты с MainLayout */}
+      {}
       <Route path="/main" element={
         <ProtectedRoute>
           <MainLayout />
@@ -81,17 +116,61 @@ const AppRouter = () => {
         <Route index element={<MainPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="settings" element={<SettingsPage />} />
-        <Route path="organization" element={<OrganizationPage />} />
-        <Route path="employees" element={<EmployeesPage />} />
-        <Route path="receive" element={<ReceivePage />} />
-        <Route path="ship" element={<ShipPage />} />
+        <Route path="organization" element={
+          <RoleGuard allowed={['DIRECTOR']}>
+            <OrganizationPage />
+          </RoleGuard>
+        } />
+        <Route path="employees" element={
+          <RoleGuard allowed={['DIRECTOR']}>
+            <EmployeesPage />
+          </RoleGuard>
+        } />
+        <Route path="receive" element={
+          <RoleGuard allowed={['WORKER', 'DIRECTOR']}>
+            <ReceivePage />
+          </RoleGuard>
+        } />
+        <Route path="ship" element={
+          <RoleGuard allowed={['WORKER', 'DIRECTOR']}>
+            <ShipPage />
+          </RoleGuard>
+        } />
         <Route path="inventory" element={<InventoryPage />} />
-        <Route path="writeoff" element={<WriteoffPage />} />
-        <Route path="revaluation" element={<RevaluationPage />} />
-        <Route path="analytics" element={<AnalyticsPage />} />
+        <Route path="writeoff" element={
+          <RoleGuard allowed={['ACCOUNTANT', 'DIRECTOR']}>
+            <WriteoffPage />
+          </RoleGuard>
+        } />
+        <Route path="revaluation" element={
+          <RoleGuard allowed={['ACCOUNTANT', 'DIRECTOR']}>
+            <RevaluationPage />
+          </RoleGuard>
+        } />
+        <Route path="analytics" element={
+          <RoleGuard allowed={['ACCOUNTANT', 'DIRECTOR']}>
+            <AnalyticsPage />
+          </RoleGuard>
+        } />
+        <Route path="suppliers" element={
+          <RoleGuard allowed={['ACCOUNTANT', 'DIRECTOR']}>
+            <SuppliersPage />
+          </RoleGuard>
+        } />
+        <Route path="supplies" element={
+          <RoleGuard allowed={['WORKER', 'ACCOUNTANT', 'DIRECTOR']}>
+            <SuppliesPage />
+          </RoleGuard>
+        } />
+        <Route path="documents" element={<DocumentsPage />} />
+        <Route path="erp-extractor" element={
+          <RoleGuard allowed={['DIRECTOR']}>
+            <ErpExtractorPage />
+          </RoleGuard>
+        } />
       </Route>
 
-      {/* 404 - редирект на главную */}
+      {}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

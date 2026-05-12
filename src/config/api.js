@@ -1,94 +1,144 @@
 const API_BASE_URL = '';
 
 export const API_ENDPOINTS = {
-  // Auth endpoints (SSO Service)
+
   AUTH: {
     LOGIN: `${API_BASE_URL}/api/auth/login`,
-    REGISTER: `${API_BASE_URL}/api/auth/register`,
+    REGISTER_DIRECTOR: `${API_BASE_URL}/api/auth/register/director`,
+    REGISTER_INVITATION: `${API_BASE_URL}/api/auth/register/invitation`,
     REFRESH: `${API_BASE_URL}/api/auth/refresh`,
     LOGOUT: `${API_BASE_URL}/api/auth/logout`,
+    ME: `${API_BASE_URL}/api/auth/me`,
   },
-  // Profile endpoints (SSO Service)
+
+  INVITATIONS: {
+    VALIDATE: `${API_BASE_URL}/api/invitations/validate`,
+  },
+
   PROFILE: {
     GET: `${API_BASE_URL}/api/profile`,
     UPDATE: `${API_BASE_URL}/api/profile`,
+    DELETE_ACCOUNT: `${API_BASE_URL}/api/profile`,
+    CHANGE_PASSWORD: `${API_BASE_URL}/api/profile/password`,
+    PHOTO: `${API_BASE_URL}/api/profile/photo`,
     SESSIONS: `${API_BASE_URL}/api/profile/sessions`,
-    UPLOAD_PHOTO: `${API_BASE_URL}/api/profile/photo`,
+    SESSION_BY_ID: (sessionId) => `${API_BASE_URL}/api/profile/sessions/${sessionId}`,
   },
-  // OAuth endpoints
+
   OAUTH: {
     GOOGLE: `${API_BASE_URL}/api/oauth/google`,
     YANDEX: `${API_BASE_URL}/api/oauth/yandex`,
     COMPLETE_REGISTRATION: `${API_BASE_URL}/api/oauth/complete-registration`,
   },
-  // Organization endpoints
+
   ORGANIZATIONS: {
     BASE: `${API_BASE_URL}/api/organizations`,
-    MY: `${API_BASE_URL}/api/organizations/my`,
-    JOIN: `${API_BASE_URL}/api/organizations/join`,
+    BY_ID: (orgId) => `${API_BASE_URL}/api/organizations/${orgId}`,
     EMPLOYEES: (orgId) => `${API_BASE_URL}/api/organizations/${orgId}/employees`,
-    INVITATION_CODE: (orgId) => `${API_BASE_URL}/api/organizations/${orgId}/invitation-code`,
+    EMPLOYEE_BY_ID: (orgId, userId) => `${API_BASE_URL}/api/organizations/${orgId}/employees/${userId}`,
+    EMPLOYEE_STATUS: (orgId, userId) => `${API_BASE_URL}/api/organizations/${orgId}/employees/${userId}/status`,
+    INVITATIONS: (orgId) => `${API_BASE_URL}/api/organizations/${orgId}/invitations`,
   },
-  // Warehouse endpoints
+
   WAREHOUSES: {
     BASE: `${API_BASE_URL}/api/warehouses`,
     BY_ORG: (orgId) => `${API_BASE_URL}/api/warehouses/organization/${orgId}`,
     BY_ID: (id) => `${API_BASE_URL}/api/warehouses/${id}`,
     ANALYTICS: `${API_BASE_URL}/api/warehouses/analytics`,
   },
-  // Rack endpoints
+
   RACKS: {
     BASE: `${API_BASE_URL}/api/racks`,
     BY_WAREHOUSE: (warehouseId) => `${API_BASE_URL}/api/racks/warehouse/${warehouseId}`,
     BY_ID: (id) => `${API_BASE_URL}/api/racks/${id}`,
+    SHELVES: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/shelves`,
+    CELLS: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/cells`,
+    FRIDGES: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/fridges`,
+    PALLETS: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/pallets`,
+    SLOTS: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/slots`,
+    CELL_BY_ID: (cellId) => `${API_BASE_URL}/api/racks/cells/${cellId}`,
   },
-  // Product endpoints
+
   PRODUCTS: {
     BASE: `${API_BASE_URL}/api/products`,
     BY_ID: (id) => `${API_BASE_URL}/api/products/${id}`,
     SEARCH: `${API_BASE_URL}/api/products/search`,
   },
-  // Batch endpoints
+
   BATCHES: {
     BASE: `${API_BASE_URL}/api/batches`,
     BY_PRODUCT: (productId) => `${API_BASE_URL}/api/batches/product/${productId}`,
   },
-  // Operations endpoints
+
+  SUPPLIERS: {
+    BASE: `${API_BASE_URL}/api/suppliers`,
+    BY_ID: (id) => `${API_BASE_URL}/api/suppliers/${id}`,
+  },
+
+  SUPPLIES: {
+    BASE: `${API_BASE_URL}/api/supplies`,
+    BY_ID: (id) => `${API_BASE_URL}/api/supplies/${id}`,
+    STATUS: (id) => `${API_BASE_URL}/api/supplies/${id}/status`,
+  },
+
   OPERATIONS: {
     RECEIVE: `${API_BASE_URL}/api/operations/receive`,
-    SHIP: `${API_BASE_URL}/api/operations/ship`,
     TRANSFER: `${API_BASE_URL}/api/operations/transfer`,
-    RESERVE: `${API_BASE_URL}/api/operations/reserve`,
+    REVALUATE: `${API_BASE_URL}/api/operations/revaluate`,
+    WRITE_OFF: `${API_BASE_URL}/api/operations/write-off`,
+    WRITE_OFF_MARKED: `${API_BASE_URL}/api/operations/write-off/marked-items`,
     HISTORY: `${API_BASE_URL}/api/operations/history`,
+    PLACEMENT_AUTO: `${API_BASE_URL}/api/operations/placement/auto`,
+    PLACEMENT_MANUAL: `${API_BASE_URL}/api/operations/placement/manual`,
+    BARCODES_PRINT: `${API_BASE_URL}/api/operations/barcodes/print`,
+
+    SHIP_REQUESTS: `${API_BASE_URL}/api/operations/ship-requests`,
+    SHIP_REQUEST_BY_ID: (id) => `${API_BASE_URL}/api/operations/ship-requests/${id}`,
+    SHIP_REQUEST_PICK: (id) => `${API_BASE_URL}/api/operations/ship-requests/${id}/pick`,
+    SHIP_REQUEST_COMPLETE: (id) => `${API_BASE_URL}/api/operations/ship-requests/${id}/complete`,
+    SHIP_REQUEST_UNPICK: (id) => `${API_BASE_URL}/api/operations/ship-requests/${id}/unpick`,
   },
-  // Inventory endpoints
+
   INVENTORY: {
     BASE: `${API_BASE_URL}/api/inventory`,
     BY_WAREHOUSE: (warehouseId) => `${API_BASE_URL}/api/inventory/warehouse/${warehouseId}`,
-    WRITEOFF: `${API_BASE_URL}/api/inventory/writeoff`,
-    REVALUATION: `${API_BASE_URL}/api/inventory/revaluation`,
+    BY_PRODUCT: (productId) => `${API_BASE_URL}/api/inventory/product/${productId}`,
+    BY_CELL: (cellId) => `${API_BASE_URL}/api/inventory/cell/${cellId}`,
   },
-  // Inventory check (инвентаризация)
+
   INVENTORY_CHECK: {
     START: `${API_BASE_URL}/api/inventory-check/start`,
-    COMPLETE: `${API_BASE_URL}/api/inventory-check/complete`,
-    COUNT: `${API_BASE_URL}/api/inventory-check/count`,
-    SESSIONS: `${API_BASE_URL}/api/inventory-check/sessions`,
+    START_STRUCTURED: `${API_BASE_URL}/api/inventory-check/start-structured`,
+    BY_ID: (sessionId) => `${API_BASE_URL}/api/inventory-check/${sessionId}`,
+    RECORD: (sessionId) => `${API_BASE_URL}/api/inventory-check/${sessionId}/record`,
+    COMPLETE: (sessionId) => `${API_BASE_URL}/api/inventory-check/${sessionId}/complete`,
+    CANCEL: (sessionId) => `${API_BASE_URL}/api/inventory-check/${sessionId}/cancel`,
   },
-  // Analytics endpoints
+
   ANALYTICS: {
-    STOCK: `${API_BASE_URL}/api/analytics/stock`,
-    OPERATIONS: `${API_BASE_URL}/api/analytics/operations`,
-    WAREHOUSE_LOAD: `${API_BASE_URL}/api/analytics/warehouse-load`,
-    EMPLOYEES: `${API_BASE_URL}/api/analytics/employees`,
+    INVENTORY: `${API_BASE_URL}/api/analytics/inventory`,
+    OPERATIONS_DYNAMICS: `${API_BASE_URL}/api/analytics/operations/dynamics`,
+    OPERATIONS_COMPARE: `${API_BASE_URL}/api/analytics/operations/compare`,
+    INVENTORY_COMPARE: `${API_BASE_URL}/api/analytics/inventory/compare`,
+    OPERATIONS_SUMMARY: `${API_BASE_URL}/api/analytics/operations/summary`,
+    WAREHOUSES_ALL: `${API_BASE_URL}/api/warehouses/analytics`,
+    WAREHOUSE_BY_ID: (warehouseId) => `${API_BASE_URL}/api/warehouses/analytics/${warehouseId}`,
+    WAREHOUSES_ORG_SUMMARY: (orgId) => `${API_BASE_URL}/api/warehouses/analytics/organization/${orgId}/summary`,
+    EMPLOYEES_BY_ORG: (orgId) => `${API_BASE_URL}/api/organizations/${orgId}/analytics/employees`,
   },
-  // Document endpoints
+
   DOCUMENTS: {
-    RECEIPT_ORDER: `${API_BASE_URL}/api/documents/receipt-order`,
-    SHIPPING_INVOICE: `${API_BASE_URL}/api/documents/shipping-invoice`,
-    INVENTORY_LIST: `${API_BASE_URL}/api/documents/inventory-list`,
-    WRITEOFF_ACT: `${API_BASE_URL}/api/documents/writeoff-act`,
-    REVALUATION_ACT: `${API_BASE_URL}/api/documents/revaluation-act`,
+    LIST: `${API_BASE_URL}/api/documents`,
+    BY_ID: (id) => `${API_BASE_URL}/api/documents/${id}`,
+    METADATA: (id) => `${API_BASE_URL}/api/documents/${id}/metadata`,
+    GENERATE: (type) => `${API_BASE_URL}/api/documents/${type}`,
+    STUB_INFO: `${API_BASE_URL}/api/documents/stub-info`,
+  },
+
+  ERP_EXTRACTOR: {
+    RUN: `${API_BASE_URL}/api/erp-extractor/run`,
+    DELIVERIES: `${API_BASE_URL}/api/erp-extractor/deliveries`,
+    LOG: `${API_BASE_URL}/api/erp-extractor/log`,
   },
 };
 
