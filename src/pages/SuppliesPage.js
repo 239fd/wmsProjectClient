@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, Paper, Button, Stack, Chip, IconButton, Tooltip,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, MenuItem, Select, InputLabel, FormControl, FormHelperText,
   CircularProgress, Grid, Divider, Autocomplete,
@@ -10,6 +10,7 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import CheckIcon from '@mui/icons-material/Check';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
@@ -17,6 +18,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { selectUser } from '../store/slices/authSlice';
 import supplyService from '../services/supplyService';
 import productService from '../services/productService';
+import ExtractDataDialog from '../components/shared/ExtractDataDialog';
 import { useWarehouses, useSuppliers } from '../hooks';
 import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
@@ -39,6 +41,9 @@ const SuppliesPage = () => {
   const userId = user?.userId;
 
   const [supplies, setSupplies] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
   const { data: suppliers } = useSuppliers();
   const { data: warehouses } = useWarehouses();
   const [loading, setLoading] = useState(true);
@@ -46,6 +51,7 @@ const SuppliesPage = () => {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
+  const [extractOpen, setExtractOpen] = useState(false);
 
   const [detail, setDetail] = useState(null);
   const [detailBusy, setDetailBusy] = useState(false);
@@ -58,14 +64,17 @@ const SuppliesPage = () => {
     if (!orgId) return;
     setLoading(true);
     try {
-      const list = await supplyService.list().catch(() => []);
-      setSupplies(Array.isArray(list) ? list : (list?.content || []));
+      const res = await supplyService.list({ page, size: rowsPerPage, sort: 'createdAt,desc' });
+      setSupplies(Array.isArray(res) ? res : (res?.content || []));
+      setTotal(typeof res?.totalElements === 'number' ? res.totalElements : (res?.content?.length || 0));
     } catch (err) {
       notify(err.message || 'Не удалось загрузить поставки', 'error');
+      setSupplies([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [orgId, notify]);
+  }, [orgId, page, rowsPerPage, notify]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -114,9 +123,18 @@ const SuppliesPage = () => {
       <Box sx={{ width: '100%', maxWidth: 1440, mx: 'auto', px: { xs: 2, md: 3 } }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
           <Typography variant="h4" fontWeight={700}>Плановые поставки</Typography>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-            Создать поставку
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              startIcon={<CloudDownloadIcon />}
+              onClick={() => setExtractOpen(true)}
+            >
+              Извлечь данные
+            </Button>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
+              Создать поставку
+            </Button>
+          </Stack>
         </Stack>
 
         <Paper sx={{ p: 2, mb: 3, borderRadius: 3 }}>
@@ -150,6 +168,7 @@ const SuppliesPage = () => {
           ) : filtered.length === 0 ? (
             <EmptyState title="По выбранному статусу поставок нет" sx={{ py: 6 }} />
           ) : (
+            <>
             <TableContainer>
               <Table>
                 <TableHead>
@@ -201,6 +220,21 @@ const SuppliesPage = () => {
                 </TableBody>
               </Table>
             </TableContainer>
+            <TablePagination
+              component="div"
+              count={total}
+              page={page}
+              onPageChange={(_, p) => setPage(p)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(e) => {
+                setRowsPerPage(parseInt(e.target.value, 10));
+                setPage(0);
+              }}
+              rowsPerPageOptions={[10, 20, 50, 100]}
+              labelRowsPerPage="Строк на странице"
+              labelDisplayedRows={({ from, to, count }) => `${from}-${to} из ${count}`}
+            />
+            </>
           )}
         </Paper>
 
@@ -210,10 +244,17 @@ const SuppliesPage = () => {
           suppliers={suppliers}
           warehouses={warehouses}
           userId={userId}
+          userWarehouseId={user?.warehouseId}
           busy={createBusy}
           setBusy={setCreateBusy}
           onSuccess={async () => { setCreateOpen(false); await load(); }}
           notify={notify}
+        />
+
+        <ExtractDataDialog
+          open={extractOpen}
+          onClose={() => setExtractOpen(false)}
+          onExtracted={load}
         />
 
         {}
@@ -328,7 +369,7 @@ const SuppliesPage = () => {
   );
 };
 
-const CreateSupplyDialog = ({ open, onClose, suppliers, warehouses, userId, busy, setBusy, onSuccess, notify }) => {
+const CreateSupplyDialog = ({ open, onClose, suppliers, warehouses, userId, userWarehouseId, busy, setBusy, onSuccess, notify }) => {
   const [productOptions, setProductOptions] = useState([]);
   const [productSearchBusy, setProductSearchBusy] = useState(false);
 
@@ -346,13 +387,13 @@ const CreateSupplyDialog = ({ open, onClose, suppliers, warehouses, userId, busy
     if (open) {
       reset({
         supplierId: suppliers[0]?.supplierId || '',
-        warehouseId: warehouses[0]?.warehouseId || warehouses[0]?.id || '',
+        warehouseId: userWarehouseId || warehouses[0]?.warehouseId || warehouses[0]?.id || '',
         expectedDate: '',
         notes: '',
         items: [],
       });
     }
-  }, [open, suppliers, warehouses, reset]);
+  }, [open, suppliers, warehouses, userWarehouseId, reset]);
 
   const handleProductSearch = async (q) => {
     if (!q || q.length < 2) { setProductOptions([]); return; }
@@ -410,39 +451,33 @@ const CreateSupplyDialog = ({ open, onClose, suppliers, warehouses, userId, busy
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 6 }}>
               <Controller
-                name="warehouseId"
-                control={control}
-                render={({ field }) => (
-                  <FormControl fullWidth error={!!errors.warehouseId}>
-                    <InputLabel>Склад</InputLabel>
-                    <Select {...field} label="Склад" variant="outlined" disabled={busy}>
-                      {warehouses.map((w) => (
-                        <MenuItem key={w.warehouseId || w.id} value={w.warehouseId || w.id}>{w.name}</MenuItem>
-                      ))}
-                    </Select>
-                    {errors.warehouseId && <FormHelperText>{errors.warehouseId.message}</FormHelperText>}
-                  </FormControl>
-                )}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Controller
                 name="supplierId"
                 control={control}
                 render={({ field }) => (
-                  <FormControl fullWidth>
+                  <FormControl fullWidth disabled={busy || suppliers.length === 0}>
                     <InputLabel>Поставщик</InputLabel>
-                    <Select {...field} label="Поставщик" variant="outlined" disabled={busy}>
+                    <Select
+                      {...field}
+                      value={field.value ?? ''}
+                      label="Поставщик"
+                      variant="outlined"
+                      MenuProps={{ disablePortal: false }}
+                    >
                       <MenuItem value="">— не указан —</MenuItem>
                       {suppliers.map((s) => (
                         <MenuItem key={s.supplierId} value={s.supplierId}>{s.name}</MenuItem>
                       ))}
                     </Select>
+                    {suppliers.length === 0 && (
+                      <FormHelperText>
+                        Нет ни одного поставщика. Создайте поставщика в справочнике «Поставщики».
+                      </FormHelperText>
+                    )}
                   </FormControl>
                 )}
               />
             </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <TextField
                 label="Плановая дата"
                 type="date"
@@ -450,13 +485,17 @@ const CreateSupplyDialog = ({ open, onClose, suppliers, warehouses, userId, busy
                 disabled={busy}
                 slotProps={{ inputLabel: { shrink: true } }}
                 {...register('expectedDate')}
+                error={!!errors.expectedDate}
+                helperText={errors.expectedDate?.message}
               />
             </Grid>
-            <Grid size={{ xs: 12, md: 9 }}>
+            <Grid size={12}>
               <TextField
                 label="Примечания"
                 fullWidth
                 disabled={busy}
+                multiline
+                minRows={2}
                 {...register('notes')}
               />
             </Grid>

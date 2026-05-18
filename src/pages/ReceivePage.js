@@ -3,9 +3,12 @@ import {
   Box, Typography, Paper, Button, Stack, IconButton, Tooltip, Divider,
   Grid, TextField, MenuItem, Select, InputLabel, FormControl, FormHelperText,
   Autocomplete, CircularProgress, Alert, Chip, Tabs, Tab,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
   LinearProgress, FormControlLabel, Checkbox,
+  Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
@@ -20,17 +23,28 @@ import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { selectUser } from '../store/slices/authSlice';
 import productService from '../services/productService';
+import supplierService from '../services/supplierService';
 import { useWarehouses, useSuppliers, useDraft } from '../hooks';
 import { useSnackbar } from '../context/SnackbarContext';
-import { receiveWizardSchema } from '../validation/schemas';
+import { receiveWizardSchema, supplierSchema, productCreateSchema } from '../validation/schemas';
 import FormWizard from '../components/shared/FormWizard';
+
+const OPERATION_STATUS_LABEL = {
+  PENDING: 'Ожидает',
+  RECEIVED: 'Принята',
+  PAUSED: 'На утверждении',
+  COMPLETED: 'Завершена',
+  COMPLETED_WITH_DISCREPANCY: 'Завершена с расхождением',
+  CANCELLED: 'Отменена',
+};
+const statusLabel = (s) => OPERATION_STATUS_LABEL[s] || s || '—';
 
 const EMPTY_ITEM = {
   productId: '',
   productName: '',
   productSku: '',
   quantity: '',
-  pricePerUnit: '0',
+  pricePerUnit: '',
   batchId: '',
   batchNumber: '',
   expiryDate: '',
@@ -46,10 +60,13 @@ const ReceivePage = () => {
   const userId = user?.userId;
 
   const { data: warehouses, loading: whLoading } = useWarehouses();
-  const { data: suppliers } = useSuppliers();
+  const { data: suppliers, refresh: refreshSuppliers } = useSuppliers();
 
   const [productOptions, setProductOptions] = useState([]);
   const [productSearchBusy, setProductSearchBusy] = useState(false);
+
+  const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
+  const [productDialogOpen, setProductDialogOpen] = useState(false);
 
   const [busy, setBusy] = useState(false);
 
@@ -92,11 +109,17 @@ const ReceivePage = () => {
   }, [user, orgId, navigate]);
 
   useEffect(() => {
+    if (user?.warehouseId) {
+      if (getValues('warehouseId') !== user.warehouseId) {
+        setValue('warehouseId', user.warehouseId);
+      }
+      return;
+    }
     if (warehouses.length > 0 && !getValues('warehouseId')) {
       setValue('warehouseId', warehouses[0].warehouseId || warehouses[0].id);
     }
 
-  }, [warehouses]);
+  }, [warehouses, user]);
 
   const handleProductSearch = useCallback(async (query) => {
     if (!query || query.length < 2) { setProductOptions([]); return; }
@@ -123,53 +146,69 @@ const ReceivePage = () => {
     });
   };
 
+  const handleSupplierCreated = async (created) => {
+    if (created?.supplierId) {
+      await refreshSuppliers();
+      setValue('supplierId', created.supplierId, { shouldValidate: true });
+      notify('Поставщик создан и выбран');
+    }
+    setSupplierDialogOpen(false);
+  };
+
+  const handleProductCreated = (created) => {
+    if (created?.productId) {
+      handleAddItem(created);
+      notify('Товар создан и добавлен в приёмку');
+    }
+    setProductDialogOpen(false);
+  };
+
   const onSubmit = async (values) => {
     setBusy(true);
     setProgress({ current: 0, total: values.items.length, succeeded: 0, failed: [] });
-    const failed = [];
-    const documents = [];
-    let succeeded = 0;
-    for (let i = 0; i < values.items.length; i++) {
-      const it = values.items[i];
-      setProgress({ current: i, total: values.items.length, succeeded, failed: [...failed] });
-      try {
-        const res = await productService.receiveProduct({
+    try {
+      const session = await productService.createReceiptSession({
+        warehouseId: values.warehouseId,
+        supplierId: values.supplierId || null,
+        supplyId: values.supplyId || null,
+        userId,
+        generalNotes: null,
+        items: values.items.map((it) => ({
           productId: it.productId,
-          warehouseId: values.warehouseId,
-          quantity: it.quantity,
-          userId,
           batchId: it.batchId || null,
           cellId: it.cellId || null,
+          quantity: it.quantity,
           pricePerUnit: it.pricePerUnit ?? 0,
-          supplierId: values.supplierId || null,
-          supplyId: values.supplyId || null,
-          expiryDate: it.expiryDate || null,
           batchNumber: it.batchNumber || null,
+          expiryDate: it.expiryDate || null,
           notes: it.notes || null,
-        });
-        succeeded += 1;
-        if (res?.documentId) {
-          documents.push({
-            productName: it.productName,
-            documentId: res.documentId,
-            operationId: res.operationId,
-          });
-        }
-      } catch (err) {
-        failed.push({ idx: i, productName: it.productName, error: err.message || 'Ошибка' });
-      }
-    }
-    setProgress({ current: values.items.length, total: values.items.length, succeeded, failed });
-    setBusy(false);
+        })),
+      });
 
-    if (failed.length === 0) {
-      notify(`Принято позиций: ${succeeded}`);
+      const sessionItems = (session.items || []).map((opItem, idx) => {
+        const formItem = values.items[idx] || {};
+        return {
+          operationId: opItem.operationId,
+          productId: opItem.productId,
+          productName: formItem.productName || '—',
+          productSku: formItem.productSku || '',
+          expectedQty: opItem.quantity,
+        };
+      });
+
       setLastResult({
-        succeeded,
-        failed,
-        documents,
+        session: {
+          sessionId: session.sessionId,
+          status: session.status || 'PAUSED',
+          receiptOrderDocId: session.receiptOrderDocId || null,
+          receiptActDocId: session.receiptActDocId || null,
+          items: sessionItems,
+        },
         warehouseName: warehouses.find((w) => (w.warehouseId || w.id) === values.warehouseId)?.name,
       });
+      setProgress({ current: values.items.length, total: values.items.length, succeeded: values.items.length, failed: [] });
+      notify(`Сессия приёмки создана: ${sessionItems.length} позиций · ожидает утверждения`);
+
       clearDraft();
       reset({
         warehouseId: values.warehouseId,
@@ -177,24 +216,48 @@ const ReceivePage = () => {
         supplyId: '',
         items: [],
       });
-
       setWizardKey((k) => k + 1);
-    } else if (succeeded === 0) {
-      notify(`Все ${failed.length} позиций отклонены — см. список ошибок`, 'error');
-    } else {
-      notify(`Принято: ${succeeded}, отклонено: ${failed.length}`, 'warning');
-      setLastResult({
-        succeeded,
-        failed,
-        documents,
-        warehouseName: warehouses.find((w) => (w.warehouseId || w.id) === values.warehouseId)?.name,
-      });
+    } catch (err) {
+      notify(err.message || 'Не удалось создать сессию приёмки', 'error');
+      setProgress({ current: 0, total: values.items.length, succeeded: 0, failed: [{ idx: 0, productName: '—', error: err.message || 'Ошибка' }] });
+    } finally {
+      setBusy(false);
     }
   };
 
   const [wizardKey, setWizardKey] = useState(0);
 
   const [tab, setTab] = useState(0);
+  const [discrepancyDialog, setDiscrepancyDialog] = useState(null);
+
+  const handleCompleteSession = useCallback(async (sessionId) => {
+    try {
+      await productService.completeReceiptSession(sessionId);
+      notify('Приёмка завершена');
+      setLastResult((prev) => (prev?.session?.sessionId === sessionId
+        ? { ...prev, session: { ...prev.session, status: 'COMPLETED' } }
+        : prev));
+    } catch (err) {
+      notify(err.message || 'Не удалось завершить приёмку', 'error');
+    }
+  }, [notify]);
+
+  const handleSessionDiscrepancySubmit = useCallback(async (sessionId, payload) => {
+    try {
+      const res = await productService.recordSessionDiscrepancy(sessionId, payload);
+      notify('Расхождение зафиксировано, приёмка завершена');
+      setLastResult((prev) => (prev?.session?.sessionId === sessionId
+        ? { ...prev, session: {
+            ...prev.session,
+            status: 'COMPLETED_WITH_DISCREPANCY',
+            receiptActDocId: res?.receiptActDocId || prev.session.receiptActDocId,
+          } }
+        : prev));
+      setDiscrepancyDialog(null);
+    } catch (err) {
+      notify(err.message || 'Не удалось зафиксировать расхождение', 'error');
+    }
+  }, [notify]);
 
   if (!user || !orgId) return null;
   if (whLoading) {
@@ -225,7 +288,12 @@ const ReceivePage = () => {
           render={({ field }) => (
             <FormControl fullWidth error={!!errors.warehouseId}>
               <InputLabel>Склад</InputLabel>
-              <Select {...field} label="Склад" variant="outlined" disabled={busy}>
+              <Select
+                {...field}
+                label="Склад"
+                variant="outlined"
+                disabled={busy || !!user?.warehouseId}
+              >
                 {warehouses.length === 0 ? (
                   <MenuItem value="" disabled>Нет складов</MenuItem>
                 ) : (
@@ -236,30 +304,47 @@ const ReceivePage = () => {
                   ))
                 )}
               </Select>
-              {errors.warehouseId && <FormHelperText>{errors.warehouseId.message}</FormHelperText>}
+              {errors.warehouseId
+                ? <FormHelperText>{errors.warehouseId.message}</FormHelperText>
+                : user?.warehouseId && <FormHelperText>Вы привязаны к этому складу</FormHelperText>}
             </FormControl>
           )}
         />
       </Grid>
 
       <Grid size={{ xs: 12, md: 6 }}>
-        <Controller
-          name="supplierId"
-          control={control}
-          render={({ field }) => (
-            <FormControl fullWidth>
-              <InputLabel>Поставщик (опционально)</InputLabel>
-              <Select {...field} label="Поставщик (опционально)" variant="outlined" disabled={busy}>
-                <MenuItem value="">— не указан —</MenuItem>
-                {suppliers.map((s) => (
-                  <MenuItem key={s.supplierId} value={s.supplierId}>
-                    {s.name}{s.unp ? ` (ИНН ${s.unp})` : ''}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-        />
+        <Stack direction="row" spacing={1} alignItems="flex-start">
+          <Controller
+            name="supplierId"
+            control={control}
+            render={({ field }) => (
+              <FormControl fullWidth>
+                <InputLabel>Поставщик (опционально)</InputLabel>
+                <Select {...field} label="Поставщик (опционально)" variant="outlined" disabled={busy}>
+                  <MenuItem value="">— не указан —</MenuItem>
+                  {suppliers.map((s) => (
+                    <MenuItem key={s.supplierId} value={s.supplierId}>
+                      {s.name}{s.unp ? ` (ИНН ${s.unp})` : ''}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+          />
+          <Tooltip title="Создать нового поставщика">
+            <span>
+              <Button
+                variant="outlined"
+                startIcon={<AddIcon />}
+                sx={{ whiteSpace: 'nowrap', height: 56 }}
+                disabled={busy}
+                onClick={() => setSupplierDialogOpen(true)}
+              >
+                Создать
+              </Button>
+            </span>
+          </Tooltip>
+        </Stack>
       </Grid>
 
       <Grid size={12}>
@@ -276,20 +361,36 @@ const ReceivePage = () => {
 
   const renderStep2 = () => (
     <Stack spacing={2}>
-      <Autocomplete
-        options={productOptions}
-        getOptionLabel={(o) => `${o.name || ''}${o.sku ? ` (${o.sku})` : ''}`}
-        loading={productSearchBusy}
-        onInputChange={(_, q) => handleProductSearch(q)}
-        onChange={(_, val) => handleAddItem(val)}
-        renderInput={(params) => (
-          <TextField
-            {...params}
-            label="Добавить товар"
-            placeholder="≥2 символа для поиска по SKU или названию"
-          />
-        )}
-      />
+      <Stack direction="row" spacing={1} alignItems="center">
+        <Autocomplete
+          sx={{ flex: 1 }}
+          options={productOptions}
+          getOptionLabel={(o) => `${o.name || ''}${o.sku ? ` (${o.sku})` : ''}`}
+          loading={productSearchBusy}
+          onInputChange={(_, q) => handleProductSearch(q)}
+          onChange={(_, val) => handleAddItem(val)}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Добавить товар"
+              placeholder="≥2 символа для поиска по SKU или названию"
+            />
+          )}
+        />
+        <Tooltip title="Создать новый товар">
+          <span>
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              sx={{ whiteSpace: 'nowrap', height: 56 }}
+              disabled={busy}
+              onClick={() => setProductDialogOpen(true)}
+            >
+              Создать
+            </Button>
+          </span>
+        </Tooltip>
+      </Stack>
 
       {errors.items && typeof errors.items.message === 'string' && (
         <Alert severity="warning">{errors.items.message}</Alert>
@@ -307,8 +408,8 @@ const ReceivePage = () => {
                 <TableCell sx={{ minWidth: 200 }}>Товар</TableCell>
                 <TableCell align="right" sx={{ width: 110 }}>Кол-во *</TableCell>
                 <TableCell align="right" sx={{ width: 110 }}>Цена *</TableCell>
-                <TableCell sx={{ width: 130 }}>№ партии</TableCell>
-                <TableCell sx={{ width: 150 }}>Срок годности</TableCell>
+                <TableCell sx={{ width: 130 }}>№ партии *</TableCell>
+                <TableCell sx={{ width: 150 }}>Срок годности *</TableCell>
                 <TableCell sx={{ width: 60 }}></TableCell>
               </TableRow>
             </TableHead>
@@ -342,6 +443,8 @@ const ReceivePage = () => {
                       <TextField
                         size="small" fullWidth
                         {...register(`items.${i}.batchNumber`)}
+                        error={!!errors.items?.[i]?.batchNumber}
+                        helperText={errors.items?.[i]?.batchNumber?.message}
                       />
                     </TableCell>
                     <TableCell>
@@ -349,6 +452,8 @@ const ReceivePage = () => {
                         size="small" type="date" fullWidth
                         slotProps={{ inputLabel: { shrink: true } }}
                         {...register(`items.${i}.expiryDate`)}
+                        error={!!errors.items?.[i]?.expiryDate}
+                        helperText={errors.items?.[i]?.expiryDate?.message}
                       />
                     </TableCell>
                     <TableCell align="right">
@@ -475,31 +580,110 @@ const ReceivePage = () => {
       <Box sx={{ width: '100%', maxWidth: 1440, mx: 'auto', px: { xs: 2, md: 3 } }}>
         <Typography variant="h4" fontWeight={700} mb={3}>Приёмка товара</Typography>
 
-        {lastResult && (
-          <Alert
-            severity={lastResult.failed?.length ? 'warning' : 'success'}
-            sx={{ mb: 3, borderRadius: 2 }}
-            onClose={() => setLastResult(null)}
-          >
-            <Box>
+        {lastResult?.session && (
+          <Paper sx={{ mb: 3, borderRadius: 2, p: 2 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+              <Typography variant="h6" fontWeight={700}>
+                Приёмка на утверждении · {lastResult.session.items.length} позиций
+              </Typography>
+              <Box>
+                {lastResult.session.status === 'COMPLETED' && (
+                  <Chip label={statusLabel('COMPLETED')} color="success" size="small" icon={<CheckCircleIcon />} sx={{mr:1}} />
+                )}
+                {lastResult.session.status === 'COMPLETED_WITH_DISCREPANCY' && (
+                  <Chip label={statusLabel('COMPLETED_WITH_DISCREPANCY')} color="warning" size="small" icon={<ReportProblemIcon />} sx={{mr:1}} />
+                )}
+                {lastResult.session.status === 'PAUSED' && (
+                  <Chip label={`${statusLabel('PAUSED')} — утверждение для всей поставки одной кнопкой`} color="default" size="small" sx={{mr:1}} />
+                )}
+                <IconButton size="small" onClick={() => setLastResult(null)}>×</IconButton>
+              </Box>
+            </Stack>
+            <Alert severity="info" sx={{ mb: 2, borderRadius: 1 }}>
               На склад <b>{lastResult.warehouseName || '—'}</b> принято позиций:{' '}
-              <b>{lastResult.succeeded}</b>
-              {lastResult.failed?.length > 0 && <> · отклонено: <b>{lastResult.failed.length}</b></>}
-            </Box>
-            {lastResult.documents?.length > 0 && (
-              <Stack direction="row" spacing={1} mt={1} flexWrap="wrap" useFlexGap>
-                {lastResult.documents.map((d) => (
-                  <DocumentDownloadButton
-                    key={d.operationId}
-                    documentId={d.documentId}
-                    filename={`receipt-${d.operationId}.pdf`}
-                    label={`Акт: ${d.productName}`}
-                  />
-                ))}
+              <b>{lastResult.session.items.length}</b>. Один акт приёмки на всю поставку.
+              {' Session: '}
+              <span style={{ fontFamily: 'monospace' }}>{String(lastResult.session.sessionId).slice(0, 8)}…</span>
+            </Alert>
+
+            <Stack spacing={1} mb={2}>
+              {lastResult.session.items.map((it) => (
+                <Paper key={it.operationId} variant="outlined" sx={{ p: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography fontWeight={600} noWrap>
+                      {it.productName}
+                      {it.productSku && (
+                        <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                          {it.productSku}
+                        </Typography>
+                      )}
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" fontWeight={500}>Кол-во: <b>{it.expectedQty}</b></Typography>
+                </Paper>
+              ))}
+            </Stack>
+
+            <Stack direction="row" spacing={1} mb={2} flexWrap="wrap" useFlexGap>
+              {lastResult.session.receiptOrderDocId && (
+                <DocumentDownloadButton
+                  documentId={lastResult.session.receiptOrderDocId}
+                  filename="receipt-order.pdf"
+                  label="Приходный ордер"
+                />
+              )}
+              {lastResult.session.receiptActDocId && (
+                <DocumentDownloadButton
+                  documentId={lastResult.session.receiptActDocId}
+                  filename="receipt-act.pdf"
+                  label="Акт приёмки"
+                />
+              )}
+            </Stack>
+
+            {lastResult.session.status === 'PAUSED' && (
+              <Stack direction="row" spacing={2}>
+                <Button
+                  variant="contained"
+                  color="success"
+                  startIcon={<CheckCircleIcon />}
+                  onClick={() => handleCompleteSession(lastResult.session.sessionId)}
+                >
+                  Принять без замечаний
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  startIcon={<ReportProblemIcon />}
+                  onClick={() => setDiscrepancyDialog(lastResult.session)}
+                >
+                  Зафиксировать расхождение
+                </Button>
               </Stack>
             )}
-          </Alert>
+          </Paper>
         )}
+
+        <DiscrepancyDialog
+          session={discrepancyDialog}
+          userId={userId}
+          onClose={() => setDiscrepancyDialog(null)}
+          onSubmit={handleSessionDiscrepancySubmit}
+        />
+
+        <CreateSupplierInlineDialog
+          open={supplierDialogOpen}
+          onClose={() => setSupplierDialogOpen(false)}
+          onCreated={handleSupplierCreated}
+          notify={notify}
+        />
+
+        <CreateProductInlineDialog
+          open={productDialogOpen}
+          onClose={() => setProductDialogOpen(false)}
+          onCreated={handleProductCreated}
+          notify={notify}
+        />
 
         <Paper sx={{ borderRadius: 3, mb: 3 }}>
           <Tabs
@@ -542,7 +726,7 @@ const ReceivePage = () => {
               />
             </Box>
           ) : (
-            <ReceiveHistoryTab warehouses={warehouses} userId={userId} notify={notify} />
+            <ReceiveHistoryTab warehouses={warehouses} userId={userId} userWarehouseId={user?.warehouseId} notify={notify} />
           )}
         </Paper>
 
@@ -557,43 +741,52 @@ const ReceivePage = () => {
   );
 };
 
-const ReceiveHistoryTab = ({ warehouses, userId, notify }) => {
+const ReceiveHistoryTab = ({ warehouses, userId, userWarehouseId, notify }) => {
   const [warehouseId, setWarehouseId] = useState('');
   const [onlyMine, setOnlyMine] = useState(false);
   const [history, setHistory] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (userWarehouseId) {
+      if (warehouseId !== userWarehouseId) setWarehouseId(userWarehouseId);
+      return;
+    }
     if (warehouses.length > 0 && !warehouseId) {
       setWarehouseId(warehouses[0].warehouseId || warehouses[0].id);
     }
-  }, [warehouses, warehouseId]);
+  }, [warehouses, warehouseId, userWarehouseId]);
 
   const load = useCallback(async () => {
     if (!warehouseId) return;
     setLoading(true);
     setError(null);
     try {
-      const params = { type: 'RECEIVE', warehouseId };
+      const params = {
+        type: 'RECEIVE',
+        warehouseId,
+        page,
+        size: rowsPerPage,
+        sort: 'createdAt,desc',
+      };
       if (onlyMine && userId) params.userId = userId;
       const data = await productService.getOperationsHistory(params);
       const list = Array.isArray(data) ? data : (data?.content || []);
-
-      list.sort((a, b) => {
-        const ta = new Date(a.createdAt || a.timestamp || a.operationTime || 0).getTime();
-        const tb = new Date(b.createdAt || b.timestamp || b.operationTime || 0).getTime();
-        return tb - ta;
-      });
       setHistory(list);
+      setTotal(typeof data?.totalElements === 'number' ? data.totalElements : list.length);
     } catch (err) {
       setError(err.message || 'Не удалось загрузить историю');
       setHistory([]);
+      setTotal(0);
       notify(err.message || 'Не удалось загрузить историю', 'error');
     } finally {
       setLoading(false);
     }
-  }, [warehouseId, onlyMine, userId, notify]);
+  }, [warehouseId, onlyMine, userId, page, rowsPerPage, notify]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -616,6 +809,7 @@ const ReceiveHistoryTab = ({ warehouses, userId, notify }) => {
             value={warehouseId}
             label="Склад"
             variant="outlined"
+            disabled={!!userWarehouseId}
             onChange={(e) => setWarehouseId(e.target.value)}
           >
             {warehouses.length === 0 ? (
@@ -655,6 +849,7 @@ const ReceiveHistoryTab = ({ warehouses, userId, notify }) => {
           description="На этом складе пока не было приёмок (или они скрыты фильтром «Только мои»)."
         />
       ) : (
+        <>
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">
             <TableHead>
@@ -675,8 +870,11 @@ const ReceiveHistoryTab = ({ warehouses, userId, notify }) => {
                   key={op.operationId || op.id || idx}
                   hover
                 >
-                  <TableCell>{formatDate(op.createdAt || op.timestamp || op.operationTime)}</TableCell>
-                  <TableCell>{op.productName || op.productNameRu || '—'}</TableCell>
+                  <TableCell>{formatDate(op.operationDate || op.createdAt || op.timestamp || op.operationTime)}</TableCell>
+                  <TableCell>
+                    {op.productName || op.productNameRu
+                      || (op.productId ? <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{String(op.productId).slice(0, 8)}…</Typography> : '—')}
+                  </TableCell>
                   <TableCell>
                     <Typography variant="caption">{op.sku || op.unitSku || '—'}</Typography>
                   </TableCell>
@@ -694,8 +892,434 @@ const ReceiveHistoryTab = ({ warehouses, userId, notify }) => {
             </TableBody>
           </Table>
         </TableContainer>
+        <TablePagination
+          component="div"
+          count={total}
+          page={page}
+          onPageChange={(_, p) => setPage(p)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(parseInt(e.target.value, 10));
+            setPage(0);
+          }}
+          rowsPerPageOptions={[10, 20, 50, 100]}
+          labelRowsPerPage="Строк на странице"
+          labelDisplayedRows={({ from, to, count }) => `${from}-${to} из ${count}`}
+        />
+        </>
       )}
     </Box>
+  );
+};
+
+const DiscrepancyDialog = ({ session, userId, onClose, onSubmit }) => {
+  const [rows, setRows] = useState([]);
+  const [generalNotes, setGeneralNotes] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (session) {
+      setRows(session.items.map((it) => ({
+        operationId: it.operationId,
+        productId: it.productId,
+        productName: it.productName,
+        productSku: it.productSku,
+        expectedQty: Number(it.expectedQty || 0),
+        actualQty: String(it.expectedQty ?? ''),
+        defectDescription: '',
+        discrepancyType: 'SHORTAGE',
+      })));
+      setGeneralNotes('');
+    }
+  }, [session]);
+
+  if (!session) return null;
+
+  const updateRow = (idx, patch) => {
+    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  };
+
+  const realDiscrepancies = rows.filter((r) => {
+    const a = Number(r.actualQty);
+    return r.actualQty !== '' && !Number.isNaN(a) && a !== r.expectedQty;
+  });
+
+  const handleSubmit = async () => {
+    setBusy(true);
+    try {
+      await onSubmit(session.sessionId, {
+        userId,
+        generalNotes: generalNotes || null,
+        items: realDiscrepancies.map((r) => ({
+          productId: r.productId,
+          expectedQty: r.expectedQty,
+          actualQty: Number(r.actualQty),
+          defectDescription: r.defectDescription || null,
+          discrepancyType: r.discrepancyType,
+        })),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const canSubmit = realDiscrepancies.length > 0;
+
+  return (
+    <Dialog open onClose={busy ? undefined : onClose} maxWidth="md" fullWidth>
+      <DialogTitle>Зафиксировать расхождение по приёмке</DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2}>
+          <Alert severity="info" sx={{ borderRadius: 1 }}>
+            Один акт расхождения формируется на всю поставку ({rows.length} позиций). Укажите
+            фактически принятое количество для тех позиций, по которым обнаружены расхождения.
+            Позиции, где факт = ожидание, в акт не попадут.
+          </Alert>
+
+          <Stack spacing={1.5}>
+            {rows.map((r, idx) => {
+              const actual = Number(r.actualQty);
+              const delta = !Number.isNaN(actual) ? actual - r.expectedQty : 0;
+              const hasDiff = r.actualQty !== '' && !Number.isNaN(actual) && actual !== r.expectedQty;
+              return (
+                <Paper key={r.operationId} variant="outlined" sx={{ p: 1.5, borderColor: hasDiff ? 'warning.main' : undefined }}>
+                  <Stack spacing={1}>
+                    <Box>
+                      <Typography fontWeight={600}>
+                        {r.productName}
+                        {r.productSku && (
+                          <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                            {r.productSku}
+                          </Typography>
+                        )}
+                      </Typography>
+                    </Box>
+                    <Grid container spacing={1}>
+                      <Grid size={{ xs: 4 }}>
+                        <TextField
+                          label="Ожидалось"
+                          value={r.expectedQty}
+                          disabled
+                          fullWidth
+                          size="small"
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 4 }}>
+                        <TextField
+                          label="Фактически"
+                          type="number"
+                          inputProps={{ step: '0.01', min: '0' }}
+                          value={r.actualQty}
+                          onChange={(e) => updateRow(idx, { actualQty: e.target.value })}
+                          fullWidth
+                          size="small"
+                          helperText={hasDiff ? `Δ: ${delta > 0 ? '+' : ''}${delta}` : ' '}
+                          error={hasDiff && actual < 0}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 4 }}>
+                        <FormControl size="small" fullWidth disabled={!hasDiff}>
+                          <InputLabel>Тип</InputLabel>
+                          <Select
+                            value={r.discrepancyType}
+                            label="Тип"
+                            onChange={(e) => updateRow(idx, { discrepancyType: e.target.value })}
+                          >
+                            <MenuItem value="SHORTAGE">Недостача</MenuItem>
+                            <MenuItem value="SURPLUS">Излишек</MenuItem>
+                            <MenuItem value="DEFECT">Брак / дефект</MenuItem>
+                            <MenuItem value="MISGRADE">Пересортица</MenuItem>
+                            <MenuItem value="OTHER">Иное</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      {hasDiff && (
+                        <Grid size={{ xs: 12 }}>
+                          <TextField
+                            label="Описание (опционально)"
+                            value={r.defectDescription}
+                            onChange={(e) => updateRow(idx, { defectDescription: e.target.value })}
+                            fullWidth
+                            size="small"
+                            placeholder="Например: вмятина на упаковке"
+                          />
+                        </Grid>
+                      )}
+                    </Grid>
+                  </Stack>
+                </Paper>
+              );
+            })}
+          </Stack>
+
+          <TextField
+            label="Общая заметка по акту (опционально)"
+            value={generalNotes}
+            onChange={(e) => setGeneralNotes(e.target.value)}
+            fullWidth
+            multiline
+            rows={2}
+            size="small"
+          />
+
+          {!canSubmit && (
+            <Alert severity="warning" sx={{ borderRadius: 1 }}>
+              Не указаны расхождения. Если приёмка без замечаний — закройте диалог и нажмите
+              «Принять без замечаний».
+            </Alert>
+          )}
+          <Alert severity="info" sx={{ borderRadius: 1 }}>
+            После фиксации будет перегенерирован акт приёмки с шаблоном «Акт расхождения», сессия
+            перейдёт в статус <b>Завершена с расхождениями</b>. Подпись кладовщика как материально-
+            ответственного лица — достаточное основание (Постановление № 1290 п.40).
+          </Alert>
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={busy}>Отмена</Button>
+        <Button
+          variant="contained"
+          color="warning"
+          onClick={handleSubmit}
+          disabled={busy || !canSubmit}
+          startIcon={busy ? <CircularProgress size={16} /> : <ReportProblemIcon />}
+        >
+          Зафиксировать ({realDiscrepancies.length})
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+const CreateSupplierInlineDialog = ({ open, onClose, onCreated, notify }) => {
+  const [busy, setBusy] = useState(false);
+  const {
+    register, handleSubmit, reset,
+    formState: { errors },
+  } = useForm({
+    resolver: yupResolver(supplierSchema),
+    defaultValues: {
+      name: '', unp: '', contactPerson: '', phone: '', email: '', address: '',
+    },
+    mode: 'onTouched',
+  });
+
+  useEffect(() => {
+    if (open) {
+      reset({ name: '', unp: '', contactPerson: '', phone: '', email: '', address: '' });
+    }
+  }, [open, reset]);
+
+  const onSubmit = async (values) => {
+    setBusy(true);
+    try {
+      const created = await supplierService.create(values);
+      onCreated(created);
+    } catch (err) {
+      notify(err.message || 'Не удалось создать поставщика', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Новый поставщик</DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2} sx={{ pt: 1 }}>
+          <TextField
+            label="Наименование *"
+            fullWidth size="small"
+            {...register('name')}
+            error={!!errors.name}
+            helperText={errors.name?.message}
+            autoFocus
+          />
+          <TextField
+            label="ИНН (9 цифр)"
+            fullWidth size="small"
+            {...register('unp')}
+            error={!!errors.unp}
+            helperText={errors.unp?.message}
+          />
+          <TextField
+            label="Контактное лицо"
+            fullWidth size="small"
+            {...register('contactPerson')}
+          />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <TextField
+              label="Телефон"
+              fullWidth size="small"
+              {...register('phone')}
+            />
+            <TextField
+              label="Email"
+              fullWidth size="small"
+              {...register('email')}
+              error={!!errors.email}
+              helperText={errors.email?.message}
+            />
+          </Stack>
+          <TextField
+            label="Адрес"
+            fullWidth size="small"
+            {...register('address')}
+            multiline rows={2}
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={busy}>Отмена</Button>
+        <Button
+          variant="contained"
+          onClick={handleSubmit(onSubmit)}
+          disabled={busy}
+          startIcon={busy ? <CircularProgress size={16} /> : <AddIcon />}
+        >
+          Создать
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+const UNIT_OPTIONS = ['шт', 'кг', 'г', 'л', 'мл', 'м', 'см', 'упак', 'ящ', 'рулон'];
+
+const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
+  const [busy, setBusy] = useState(false);
+  const {
+    register, handleSubmit, reset, control,
+    formState: { errors },
+  } = useForm({
+    resolver: yupResolver(productCreateSchema),
+    defaultValues: {
+      name: '', sku: '', barcode: '', category: '',
+      unitOfMeasure: 'шт', description: '', weightKg: '', volumeM3: '',
+    },
+    mode: 'onTouched',
+  });
+
+  useEffect(() => {
+    if (open) {
+      reset({
+        name: '', sku: '', barcode: '', category: '',
+        unitOfMeasure: 'шт', description: '', weightKg: '', volumeM3: '',
+      });
+    }
+  }, [open, reset]);
+
+  const onSubmit = async (values) => {
+    setBusy(true);
+    try {
+      const payload = {
+        ...values,
+        weightKg: values.weightKg ?? null,
+        volumeM3: values.volumeM3 ?? null,
+      };
+      const created = await productService.createProduct(payload);
+      onCreated(created);
+    } catch (err) {
+      notify(err.message || 'Не удалось создать товар', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Новый товар</DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2} sx={{ pt: 1 }}>
+          <TextField
+            label="Название *"
+            fullWidth size="small"
+            {...register('name')}
+            error={!!errors.name}
+            helperText={errors.name?.message}
+            autoFocus
+          />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <TextField
+              label="SKU"
+              fullWidth size="small"
+              placeholder="оставьте пустым — сгенерируется автоматически"
+              {...register('sku')}
+              error={!!errors.sku}
+              helperText={errors.sku?.message || 'Если не указать — будет назначен автоматически'}
+            />
+            <TextField
+              label="Штрих-код"
+              fullWidth size="small"
+              {...register('barcode')}
+              error={!!errors.barcode}
+              helperText={errors.barcode?.message}
+            />
+          </Stack>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <TextField
+              label="Категория"
+              fullWidth size="small"
+              {...register('category')}
+              error={!!errors.category}
+              helperText={errors.category?.message}
+            />
+            <Controller
+              name="unitOfMeasure"
+              control={control}
+              render={({ field }) => (
+                <FormControl fullWidth size="small" error={!!errors.unitOfMeasure}>
+                  <InputLabel>Ед. измерения</InputLabel>
+                  <Select {...field} label="Ед. измерения" variant="outlined">
+                    {UNIT_OPTIONS.map((u) => (
+                      <MenuItem key={u} value={u}>{u}</MenuItem>
+                    ))}
+                  </Select>
+                  <FormHelperText>{errors.unitOfMeasure?.message || 'шт / кг / л / упак'}</FormHelperText>
+                </FormControl>
+              )}
+            />
+          </Stack>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <TextField
+              label="Вес, кг"
+              type="number"
+              fullWidth size="small"
+              inputProps={{ step: '0.001', min: '0' }}
+              {...register('weightKg')}
+              error={!!errors.weightKg}
+              helperText={errors.weightKg?.message}
+            />
+            <TextField
+              label="Объём, м³"
+              type="number"
+              fullWidth size="small"
+              inputProps={{ step: '0.0001', min: '0' }}
+              {...register('volumeM3')}
+              error={!!errors.volumeM3}
+              helperText={errors.volumeM3?.message}
+            />
+          </Stack>
+          <TextField
+            label="Описание"
+            fullWidth size="small"
+            {...register('description')}
+            multiline rows={2}
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={busy}>Отмена</Button>
+        <Button
+          variant="contained"
+          onClick={handleSubmit(onSubmit)}
+          disabled={busy}
+          startIcon={busy ? <CircularProgress size={16} /> : <AddIcon />}
+        >
+          Создать
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 };
 

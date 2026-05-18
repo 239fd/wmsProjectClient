@@ -1,5 +1,7 @@
 const API_BASE_URL = '';
 
+export const BACKEND_URL = process.env.REACT_APP_API_URL || 'http://localhost:8765';
+
 export const API_ENDPOINTS = {
 
   AUTH: {
@@ -82,7 +84,6 @@ export const API_ENDPOINTS = {
   },
 
   OPERATIONS: {
-    RECEIVE: `${API_BASE_URL}/api/operations/receive`,
     TRANSFER: `${API_BASE_URL}/api/operations/transfer`,
     REVALUATE: `${API_BASE_URL}/api/operations/revaluate`,
     WRITE_OFF: `${API_BASE_URL}/api/operations/write-off`,
@@ -97,6 +98,13 @@ export const API_ENDPOINTS = {
     SHIP_REQUEST_PICK: (id) => `${API_BASE_URL}/api/operations/ship-requests/${id}/pick`,
     SHIP_REQUEST_COMPLETE: (id) => `${API_BASE_URL}/api/operations/ship-requests/${id}/complete`,
     SHIP_REQUEST_UNPICK: (id) => `${API_BASE_URL}/api/operations/ship-requests/${id}/unpick`,
+  },
+
+  RECEIPT_SESSIONS: {
+    BASE: `${API_BASE_URL}/api/receipt-sessions`,
+    BY_ID: (sessionId) => `${API_BASE_URL}/api/receipt-sessions/${sessionId}`,
+    COMPLETE: (sessionId) => `${API_BASE_URL}/api/receipt-sessions/${sessionId}/complete`,
+    DISCREPANCY: (sessionId) => `${API_BASE_URL}/api/receipt-sessions/${sessionId}/discrepancy`,
   },
 
   INVENTORY: {
@@ -135,10 +143,28 @@ export const API_ENDPOINTS = {
     STUB_INFO: `${API_BASE_URL}/api/documents/stub-info`,
   },
 
+  DOCUMENT_REGISTRY: {
+    LIST: `${API_BASE_URL}/api/document-registry`,
+    BY_ID: (id) => `${API_BASE_URL}/api/document-registry/${id}`,
+    DOWNLOAD: (id) => `${API_BASE_URL}/api/document-registry/${id}/download`,
+    PRESIGNED_URL: (id) => `${API_BASE_URL}/api/document-registry/${id}/url`,
+    BY_OPERATION: (operationId) => `${API_BASE_URL}/api/document-registry/by-operation/${operationId}`,
+  },
+
+  OFFICE_RPA: {
+    HEALTH: `${API_BASE_URL}/api/documents/office/health`,
+  },
+
   ERP_EXTRACTOR: {
     RUN: `${API_BASE_URL}/api/erp-extractor/run`,
     DELIVERIES: `${API_BASE_URL}/api/erp-extractor/deliveries`,
     LOG: `${API_BASE_URL}/api/erp-extractor/log`,
+  },
+
+  ERP_CONNECTIONS: {
+    BASE: `${API_BASE_URL}/api/erp-connections`,
+    BY_ID: (id) => `${API_BASE_URL}/api/erp-connections/${id}`,
+    SET_DEFAULT: (id) => `${API_BASE_URL}/api/erp-connections/${id}/default`,
   },
 };
 

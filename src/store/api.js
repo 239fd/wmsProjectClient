@@ -1,7 +1,6 @@
 import axios from 'axios';
+import { BACKEND_URL as API_BASE_URL } from '../config/api';
 import { notifyNetworkError } from '../utils/notifyBridge';
-
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8765';
 
 export const clearAuthData = () => {
   localStorage.removeItem('accessToken');
@@ -25,6 +24,28 @@ api.interceptors.request.use(
     const token = localStorage.getItem('accessToken');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    try {
+      const raw = localStorage.getItem('user');
+      const user = raw ? JSON.parse(raw) : null;
+      if (user?.organizationId && !config.headers['X-Organization-Id']) {
+        config.headers['X-Organization-Id'] = user.organizationId;
+      }
+      if (user?.userId && !config.headers['X-User-Id']) {
+        config.headers['X-User-Id'] = user.userId;
+      }
+      if (user?.role && !config.headers['X-User-Role']) {
+        config.headers['X-User-Role'] = user.role;
+      }
+      if (user?.warehouseId && !config.headers['X-Warehouse-Id']) {
+        config.headers['X-Warehouse-Id'] = user.warehouseId;
+      }
+    } catch (e) {
+      // ignore — user not in localStorage yet
+    }
+    const generationMode = localStorage.getItem('generationMode');
+    if (generationMode && !config.headers['X-Generation-Mode']) {
+      config.headers['X-Generation-Mode'] = generationMode;
     }
     return config;
   },

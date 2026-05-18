@@ -10,8 +10,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { login, clearError, selectAuthLoading, selectAuthError, selectIsAuthenticated } from '../store/slices/authSlice';
 import { loginSchema } from '../validation/schemas';
 import { useSnackbar } from '../context/SnackbarContext';
-
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8765';
+import { BACKEND_URL as API_BASE_URL } from '../config/api';
 
 const LoginPage = () => {
   const dispatch = useDispatch();

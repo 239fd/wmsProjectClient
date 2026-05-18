@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, Paper, Stack, Button, IconButton, Chip,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  CircularProgress, Pagination
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
+  FormControl, InputLabel, Select, MenuItem, CircularProgress,
 } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import DescriptionIcon from '@mui/icons-material/Description';
@@ -16,20 +16,16 @@ import EmptyState from '../components/shared/EmptyState';
 import { TableSkeleton } from '../components/shared/LoadingSkeleton';
 
 const TYPE_LABEL = {
-  'receipt-order':   'Приходный ордер',
-  'release-order':   'Расходный ордер',
-  'shipment-order':  'Заказ на отгрузку',
-  'inventory-report':'Опись инвентаризации',
-  'revaluation-act': 'Акт переоценки',
-  'write-off-act':   'Акт списания',
-  'waybill':         'Накладная (ТТН)',
-  'picking-list':    'Лист подбора',
-  'receipt-act':     'Акт приёмки',
-  'invoice-fact':    'Счёт-фактура',
-  'invoice':         'Инвойс',
-  'transport-note':  'Транспортная накладная',
-  'cmr':             'CMR',
-  'discrepancy-act': 'Акт о расхождении',
+  'receipt-order':    'Приходный ордер',
+  'receipt-act':      'Акт приёмки',
+  'waybill':          'ТТН (товарно-транспортная)',
+  'transport-note':   'ТН (товарная)',
+  'cmr':              'CMR (международная)',
+  'inventory-report': 'Опись инвентаризации',
+  'revaluation-act':  'Акт переоценки',
+  'write-off-act':    'Акт списания',
+  'invoice':          'Инвойс',
+  'picking-list':     'Лист подбора',
 };
 
 const formatDate = (iso) => iso ? new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
@@ -41,8 +37,10 @@ const DocumentsPage = () => {
   const orgId = user?.organizationId;
 
   const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [typeFilter, setTypeFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState(null);
 
@@ -55,27 +53,35 @@ const DocumentsPage = () => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await documentService.list({ page, size: 20 });
-
-      const list = res?.content || res?.documents || (Array.isArray(res) ? res : []);
+      const res = await documentService.list({
+        page,
+        size: rowsPerPage,
+        sort: 'generatedAt,desc',
+        type: typeFilter || undefined,
+      });
+      const list = res?.content || (Array.isArray(res) ? res : []);
       setItems(list);
-      setTotalPages(res?.totalPages || 1);
+      setTotal(typeof res?.totalElements === 'number' ? res.totalElements : list.length);
     } catch (err) {
       notify(err.message || 'Не удалось загрузить документы', 'error');
+      setItems([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [page, notify]);
+  }, [page, rowsPerPage, typeFilter, notify]);
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => { setPage(0); }, [typeFilter]);
+
   const handleDownload = async (doc) => {
-    const id = doc.documentId || doc.id;
+    const id = doc.id;
     if (!id) return;
     setDownloadingId(id);
     try {
-      const ext = (doc.format || 'pdf').replace(/^rpa-/, '');
-      const filename = `${doc.type || 'document'}-${String(id).slice(0, 8)}.${ext}`;
+      const ext = (doc.fileFormat || 'pdf').toLowerCase();
+      const filename = `${doc.documentNumber || doc.documentType || 'document'}.${ext}`;
       await documentService.download(id, filename);
       notify('Документ скачан');
     } catch (err) {
@@ -97,6 +103,23 @@ const DocumentsPage = () => {
           </Button>
         </Stack>
 
+        <Paper sx={{ p: 2, mb: 3, borderRadius: 3 }}>
+          <FormControl size="small" sx={{ minWidth: 280 }}>
+            <InputLabel>Тип документа</InputLabel>
+            <Select
+              value={typeFilter}
+              label="Тип документа"
+              variant="outlined"
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <MenuItem value="">Все типы</MenuItem>
+              {Object.entries(TYPE_LABEL).map(([v, l]) => (
+                <MenuItem key={v} value={v}>{l}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Paper>
+
         <Paper sx={{ borderRadius: 3 }}>
           {loading ? (
             <TableSkeleton rows={6} columns={6} />
@@ -113,70 +136,75 @@ const DocumentsPage = () => {
                 <Table>
                   <TableHead>
                     <TableRow>
+                      <TableCell>Номер</TableCell>
                       <TableCell>Тип</TableCell>
-                      <TableCell>ID</TableCell>
                       <TableCell>Формат</TableCell>
-                      <TableCell>Создан</TableCell>
-                      <TableCell>Статус</TableCell>
+                      <TableCell>Сгенерирован</TableCell>
+                      <TableCell>Операция</TableCell>
                       <TableCell align="right">Действия</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {items.map((doc) => {
-                      const id = doc.documentId || doc.id;
-                      return (
-                        <TableRow key={id} hover>
-                          <TableCell>
-                            <Stack direction="row" spacing={1} alignItems="center">
-                              <DescriptionIcon fontSize="small" color="action" />
-                              <Typography variant="body2">
-                                {TYPE_LABEL[doc.type] || doc.type}
-                              </Typography>
-                            </Stack>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                              {String(id).slice(0, 8)}…
+                    {items.map((doc) => (
+                      <TableRow key={doc.id} hover>
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                            {doc.documentNumber || '—'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <DescriptionIcon fontSize="small" color="action" />
+                            <Typography variant="body2">
+                              {TYPE_LABEL[doc.documentType] || doc.documentType}
                             </Typography>
-                          </TableCell>
-                          <TableCell>{(doc.format || 'pdf').toUpperCase()}</TableCell>
-                          <TableCell>{formatDate(doc.createdAt)}</TableCell>
-                          <TableCell>
-                            <Chip
-                              label={doc.status || 'GENERATED'}
-                              size="small"
-                              color={doc.status === 'FAILED' ? 'error' : 'success'}
-                            />
-                          </TableCell>
-                          <TableCell align="right">
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={() => handleDownload(doc)}
-                              disabled={downloadingId === id}
-                            >
-                              {downloadingId === id
-                                ? <CircularProgress size={18} />
-                                : <DownloadIcon fontSize="small" />}
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                          </Stack>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={(doc.fileFormat || 'pdf').toUpperCase()}
+                            size="small"
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell>{formatDate(doc.generatedAt)}</TableCell>
+                        <TableCell>
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                            {doc.operationId ? String(doc.operationId).slice(0, 8) + '…' : '—'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => handleDownload(doc)}
+                            disabled={downloadingId === doc.id}
+                          >
+                            {downloadingId === doc.id
+                              ? <CircularProgress size={18} />
+                              : <DownloadIcon fontSize="small" />}
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </TableContainer>
 
-              {totalPages > 1 && (
-                <Box display="flex" justifyContent="center" py={2}>
-                  <Pagination
-                    count={totalPages}
-                    page={page + 1}
-                    onChange={(_, p) => setPage(p - 1)}
-                    color="primary"
-                  />
-                </Box>
-              )}
+              <TablePagination
+                component="div"
+                count={total}
+                page={page}
+                onPageChange={(_, p) => setPage(p)}
+                rowsPerPage={rowsPerPage}
+                onRowsPerPageChange={(e) => {
+                  setRowsPerPage(parseInt(e.target.value, 10));
+                  setPage(0);
+                }}
+                rowsPerPageOptions={[10, 20, 50, 100]}
+                labelRowsPerPage="Строк на странице"
+                labelDisplayedRows={({ from, to, count }) => `${from}-${to} из ${count}`}
+              />
             </>
           )}
         </Paper>

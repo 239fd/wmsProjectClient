@@ -71,6 +71,7 @@ const EMPTY_SLOT_FORM = {
   minTemperatureC: '', maxTemperatureC: '',
   lengthCm: '', widthCm: '', heightCm: '',
   palletPlaceCount: '', palletType: 'EUR',
+  count: 1,
 };
 
 const slotSchemaFor = (kind) => {
@@ -201,6 +202,8 @@ const OrganizationPage = () => {
         const created = await organizationService.create(payload);
         setOrganization(created);
         dispatch(setUser({ ...user, organizationId: created.orgId }));
+        const httpService = (await import('../services/httpService')).default;
+        await httpService.refreshAccessToken();
         dispatch(fetchProfile());
         notify('Организация создана');
         if (isFirstTime) setSearchParams({}, { replace: true });
@@ -431,18 +434,31 @@ const OrganizationPage = () => {
       return;
     }
 
+    let count = 1;
+    if (rack.kind !== 'PALLET') {
+      const countRaw = Number(raw.count);
+      if (!Number.isFinite(countRaw) || countRaw < 1 || countRaw > 100 || Math.floor(countRaw) !== countRaw) {
+        slotForm.setError('count', { type: 'manual', message: 'От 1 до 100' });
+        return;
+      }
+      count = countRaw;
+    }
+
+    slotForm.clearErrors('count');
     setSlotBusy(true);
     try {
-      if (rack.kind === 'SHELF') {
-        await warehouseService.addShelf(rack.rackId, validated);
-      } else if (rack.kind === 'CELL') {
-        await warehouseService.addCell(rack.rackId, validated);
-      } else if (rack.kind === 'FRIDGE') {
-        await warehouseService.addFridge(rack.rackId, validated);
-      } else if (rack.kind === 'PALLET') {
-        await warehouseService.addPallet(rack.rackId, validated);
+      for (let i = 0; i < count; i++) {
+        if (rack.kind === 'SHELF') {
+          await warehouseService.addShelf(rack.rackId, validated);
+        } else if (rack.kind === 'CELL') {
+          await warehouseService.addCell(rack.rackId, validated);
+        } else if (rack.kind === 'FRIDGE') {
+          await warehouseService.addFridge(rack.rackId, validated);
+        } else if (rack.kind === 'PALLET') {
+          await warehouseService.addPallet(rack.rackId, validated);
+        }
       }
-      notify('Слот добавлен');
+      notify(count > 1 ? `Создано слотов: ${count}` : 'Слот добавлен');
       setSlotDialog({ open: false, rack: null });
 
       if (expandedRacks.has(rack.rackId)) {
@@ -876,25 +892,6 @@ const OrganizationPage = () => {
                   error={!!whForm.formState.errors.address}
                   helperText={whForm.formState.errors.address?.message}
                 />
-                <Controller
-                  name="responsibleUserId"
-                  control={whForm.control}
-                  render={({ field }) => (
-                    <FormControl fullWidth>
-                      <InputLabel>Ответственный (опционально)</InputLabel>
-                      <Select {...field} label="Ответственный (опционально)" variant="outlined" disabled={whBusy}>
-                        <MenuItem value="">— не назначен —</MenuItem>
-                        {employees
-                          .filter((emp) => !emp.isBlocked && emp.isActive !== false)
-                          .map((emp) => (
-                            <MenuItem key={emp.userId} value={emp.userId}>
-                              {emp.username || emp.email} · {emp.role}
-                            </MenuItem>
-                          ))}
-                      </Select>
-                    </FormControl>
-                  )}
-                />
               </Stack>
             </DialogContent>
             <DialogActions>
@@ -995,7 +992,7 @@ const OrganizationPage = () => {
         <Dialog
           open={slotDialog.open}
           onClose={() => !slotBusy && setSlotDialog({ open: false, rack: null })}
-          maxWidth="xs"
+          maxWidth="sm"
           fullWidth
         >
           <DialogTitle>
@@ -1117,6 +1114,19 @@ const OrganizationPage = () => {
                     />
                   </Stack>
                 )}
+
+                {slotDialog.rack?.kind !== 'PALLET' && (
+                  <TextField
+                    label="Создать одинаковых, шт"
+                    type="number"
+                    fullWidth
+                    disabled={slotBusy}
+                    inputProps={{ min: 1, max: 100 }}
+                    {...slotForm.register('count')}
+                    error={!!slotForm.formState.errors.count}
+                    helperText={slotForm.formState.errors.count?.message || 'От 1 до 100 — сколько одинаковых слотов создать'}
+                  />
+                )}
               </Stack>
             </DialogContent>
             <DialogActions>
@@ -1142,19 +1152,15 @@ const RackSlotsTable = ({ kind, slots }) => {
       <Table size="small" sx={{ bgcolor: 'background.default' }}>
         <TableHead>
           <TableRow>
-            <TableCell>ID полки</TableCell>
+            <TableCell sx={{ width: 60 }}>№</TableCell>
             <TableCell align="right">Грузоподъёмность, кг</TableCell>
             <TableCell>Габариты Д×Ш×В, см</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {slots.map((s) => (
-            <TableRow key={s.shelfId}>
-              <TableCell>
-                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                  {String(s.shelfId).slice(0, 8)}…
-                </Typography>
-              </TableCell>
+          {slots.map((s, i) => (
+            <TableRow key={s.shelfId || i}>
+              <TableCell>{i + 1}</TableCell>
               <TableCell align="right">{s.shelfCapacityKg ?? '—'}</TableCell>
               <TableCell>{dims(s)}</TableCell>
             </TableRow>
@@ -1169,19 +1175,15 @@ const RackSlotsTable = ({ kind, slots }) => {
       <Table size="small" sx={{ bgcolor: 'background.default' }}>
         <TableHead>
           <TableRow>
-            <TableCell>ID ячейки</TableCell>
+            <TableCell sx={{ width: 60 }}>№</TableCell>
             <TableCell align="right">Макс. вес, кг</TableCell>
             <TableCell>Габариты Д×Ш×В, см</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {slots.map((s) => (
-            <TableRow key={s.cellId}>
-              <TableCell>
-                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                  {String(s.cellId).slice(0, 8)}…
-                </Typography>
-              </TableCell>
+          {slots.map((s, i) => (
+            <TableRow key={s.cellId || i}>
+              <TableCell>{i + 1}</TableCell>
               <TableCell align="right">{s.maxWeightKg ?? '—'}</TableCell>
               <TableCell>{dims(s)}</TableCell>
             </TableRow>
@@ -1196,20 +1198,16 @@ const RackSlotsTable = ({ kind, slots }) => {
       <Table size="small" sx={{ bgcolor: 'background.default' }}>
         <TableHead>
           <TableRow>
-            <TableCell>ID</TableCell>
+            <TableCell sx={{ width: 60 }}>№</TableCell>
             <TableCell align="right">Темп. min, °C</TableCell>
             <TableCell align="right">Темп. max, °C</TableCell>
             <TableCell>Габариты Д×Ш×В, см</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {slots.map((s) => (
-            <TableRow key={s.fridgeId || s.cellId}>
-              <TableCell>
-                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                  {String(s.fridgeId || s.cellId).slice(0, 8)}…
-                </Typography>
-              </TableCell>
+          {slots.map((s, i) => (
+            <TableRow key={s.fridgeId || s.cellId || i}>
+              <TableCell>{i + 1}</TableCell>
               <TableCell align="right">{s.minTemperatureC ?? '—'}</TableCell>
               <TableCell align="right">{s.maxTemperatureC ?? '—'}</TableCell>
               <TableCell>{dims(s)}</TableCell>
@@ -1225,18 +1223,14 @@ const RackSlotsTable = ({ kind, slots }) => {
       <Table size="small" sx={{ bgcolor: 'background.default' }}>
         <TableHead>
           <TableRow>
-            <TableCell>ID места</TableCell>
+            <TableCell sx={{ width: 60 }}>№</TableCell>
             <TableCell>Габариты Д×Ш×В, см</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {slots.map((s) => (
-            <TableRow key={s.placeId}>
-              <TableCell>
-                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                  {String(s.placeId).slice(0, 8)}…
-                </Typography>
-              </TableCell>
+          {slots.map((s, i) => (
+            <TableRow key={s.placeId || i}>
+              <TableCell>{i + 1}</TableCell>
               <TableCell>{dims(s)}</TableCell>
             </TableRow>
           ))}

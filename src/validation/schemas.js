@@ -39,6 +39,32 @@ const uuid = (msg = 'Некорректный UUID') => yup
     .matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, msg)
     .required('Обязательное поле');
 
+const startOfToday = () => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+};
+
+const parseDate = (v) => {
+    if (!v) return null;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const futureOrTodayDate = (label = 'Дата') => yup
+    .string()
+    .nullable()
+    .transform((v) => (v === '' ? null : v))
+    .test('valid-date', `${label} некорректна`, (v) => v == null || parseDate(v) !== null)
+    .test('not-past', `${label} не может быть в прошлом`, (v) => {
+        if (v == null) return true;
+        const d = parseDate(v);
+        return d == null || d.getTime() >= startOfToday().getTime();
+    });
+
+const requiredFutureOrTodayDate = (label = 'Дата') => futureOrTodayDate(label)
+    .required(`${label} обязательна`);
+
 export const loginSchema = yup.object({
     email,
     password: yup.string().required('Введите пароль'),
@@ -142,7 +168,7 @@ export const palletSchema = yup.object({
 export const invitationSchema = yup.object({
     email,
     role: yup.string().oneOf(['WORKER', 'ACCOUNTANT'], 'Выберите роль').required('Роль обязательна'),
-    warehouseId: optionalString(),
+    warehouseId: requiredString('Склад обязателен — сотрудник привязан к складу'),
 });
 
 export const writeOffSchema = yup.object({
@@ -168,7 +194,7 @@ export const revaluationSchema = yup.object({
 export const supplySchema = yup.object({
     warehouseId: requiredString('Выберите склад'),
     supplierId: optionalString(),
-    expectedDate: optionalString(),
+    expectedDate: futureOrTodayDate('Плановая дата поставки'),
     notes: optionalString(),
     items: yup.array().of(
         yup.object({
@@ -186,9 +212,21 @@ export const shipRequestSchema = yup.object({
     recipientName: optionalString(),
     recipientAddress: optionalString(),
     recipientInn: optionalString(),
-    plannedDate: optionalString(),
+    plannedDate: futureOrTodayDate('Плановая дата отгрузки'),
     comment: optionalString(),
     strategy: yup.string().oneOf(['AUTO', 'FIFO', 'FEFO'], 'Выберите стратегию').required('Стратегия обязательна'),
+    shipmentType: yup.string().oneOf(['DOMESTIC', 'EXPORT']).default('DOMESTIC'),
+    currency: yup.string()
+        .matches(/^[A-Z]{3}$/, 'Код валюты — 3 латинские буквы (ISO 4217)')
+        .when('shipmentType', {
+            is: 'EXPORT',
+            then: (s) => s.notOneOf(['BYN'], 'Для экспорта укажите USD/EUR/RUB или другую валюту контракта'),
+        })
+        .required('Валюта обязательна'),
+    documentLayout: yup.string().oneOf(['HORIZONTAL', 'VERTICAL']).default('HORIZONTAL'),
+    domesticDocumentKind: yup.string().oneOf(['TN', 'TTN']).default('TN'),
+    recipientCountry: optionalString(),
+    recipientGln: optionalString(),
     items: yup.array().of(
         yup.object({
             productId: requiredString('Товар обязателен'),
@@ -205,10 +243,23 @@ export const receiveSchema = yup.object({
     placeId: optionalString(),
     quantity: positiveNumber('Количество > 0'),
     batchNumber: optionalString(),
-    expiryDate: optionalString(),
+    expiryDate: futureOrTodayDate('Срок годности'),
     pricePerUnit: nonNegativeNumber('Цена не отрицательная'),
     supplierId: optionalString(),
     supplyId: optionalString(),
+});
+
+export const productCreateSchema = yup.object({
+    name: requiredString('Название обязательно'),
+    sku: optionalString().max(100, 'SKU не более 100 символов'),
+    barcode: optionalString().max(100, 'Штрих-код не более 100 символов'),
+    category: optionalString().max(100, 'Категория не более 100 символов'),
+    unitOfMeasure: optionalString().max(50, 'Ед. измерения не более 50 символов'),
+    description: optionalString(),
+    weightKg: yup.number().typeError('Вес — число').min(0, 'Не отрицательный').nullable()
+        .transform((v, orig) => (orig === '' || orig === null ? null : v)),
+    volumeM3: yup.number().typeError('Объём — число').min(0, 'Не отрицательный').nullable()
+        .transform((v, orig) => (orig === '' || orig === null ? null : v)),
 });
 
 export const receiveWizardSchema = yup.object({
@@ -219,10 +270,10 @@ export const receiveWizardSchema = yup.object({
         yup.object({
             productId: requiredString('Выберите товар'),
             quantity: positiveNumber('Количество > 0'),
-            pricePerUnit: nonNegativeNumber('Цена ≥ 0'),
+            pricePerUnit: positiveNumber('Цена > 0'),
             batchId: optionalString(),
-            batchNumber: optionalString(),
-            expiryDate: optionalString(),
+            batchNumber: requiredString('№ партии обязателен'),
+            expiryDate: requiredFutureOrTodayDate('Срок годности'),
             cellId: optionalString(),
             notes: optionalString(),
         })

@@ -23,16 +23,15 @@ import { useDispatch, useSelector } from 'react-redux';
 import { logout, selectUser } from '../../store/slices/authSlice';
 
 const NAV_ITEMS = [
-    {key: 'receive',      label: 'Прием товара',    path: '/main/receive',      allowed: ['WORKER', 'DIRECTOR']},
-    {key: 'ship',         label: 'Отгрузка',        path: '/main/ship',         allowed: ['WORKER', 'DIRECTOR']},
-    {key: 'inventory',    label: 'Инвентаризация',  path: '/main/inventory',    allowed: 'ALL'},
-    {key: 'revaluation',  label: 'Переоценка',      path: '/main/revaluation',  allowed: ['ACCOUNTANT', 'DIRECTOR']},
-    {key: 'writeoff',     label: 'Списание',        path: '/main/writeoff',     allowed: ['ACCOUNTANT', 'DIRECTOR']},
-    {key: 'supplies',     label: 'Поставки',        path: '/main/supplies',     allowed: 'ALL'},
-    {key: 'documents',    label: 'Документы',       path: '/main/documents',    allowed: 'ALL'},
-    {key: 'analytics',    label: 'Аналитика',       path: '/main/analytics',    allowed: ['ACCOUNTANT', 'DIRECTOR']},
-    {key: 'suppliers',    label: 'Поставщики',      path: '/main/suppliers',    allowed: ['ACCOUNTANT', 'DIRECTOR']},
-    {key: 'erp',          label: 'ERP Extractor',   path: '/main/erp-extractor',allowed: ['DIRECTOR']},
+    {key: 'receive',      label: 'Прием товара',    path: '/main/receive',      allowed: ['WORKER']},
+    {key: 'ship',         label: 'Отгрузка',        path: '/main/ship',         allowed: ['WORKER']},
+    {key: 'inventory',    label: 'Инвентаризация',  path: '/main/inventory',    allowed: ['ACCOUNTANT']},
+    {key: 'revaluation',  label: 'Переоценка',      path: '/main/revaluation',  allowed: ['ACCOUNTANT']},
+    {key: 'writeoff',     label: 'Списание',        path: '/main/writeoff',     allowed: ['ACCOUNTANT']},
+    {key: 'supplies',     label: 'Поставки',        path: '/main/supplies',     allowed: ['WORKER']},
+    {key: 'documents',    label: 'Документы',       path: '/main/documents',    allowed: ['WORKER', 'ACCOUNTANT']},
+    {key: 'suppliers',    label: 'Поставщики',      path: '/main/suppliers',    allowed: ['WORKER']},
+    {key: 'analytics',    label: 'Аналитика',       path: '/main/analytics',    allowed: ['DIRECTOR']},
     {key: 'employees',    label: 'Сотрудники',      path: '/main/employees',    allowed: ['DIRECTOR']},
     {key: 'organization', label: 'Организация',     path: '/main/organization', allowed: ['DIRECTOR']},
 ];
