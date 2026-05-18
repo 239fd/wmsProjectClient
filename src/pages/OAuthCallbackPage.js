@@ -5,6 +5,7 @@ import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 import {
   setUser,
   completeOAuthRegistration,
+  bootstrapUser,
 } from '../store/slices/authSlice';
 
 const INTENT_TTL_MS = 10 * 60 * 1000;
@@ -69,14 +70,22 @@ const OAuthCallbackPage = () => {
         localStorage.setItem('refreshToken', refreshToken);
         try {
           const payload = JSON.parse(atob(accessToken.split('.')[1]));
-          const user = {
+          const stub = {
             userId: payload.sub || payload.userId,
             email: payload.email,
             fullName: payload.fullName || payload.name || payload.full_name,
             role: payload.role,
+            organizationId: payload.organizationId || null,
+            warehouseId: payload.warehouseId || null,
           };
-          localStorage.setItem('user', JSON.stringify(user));
-          dispatch(setUser(user));
+          localStorage.setItem('user', JSON.stringify(stub));
+          dispatch(setUser(stub));
+
+          try {
+            await dispatch(bootstrapUser()).unwrap();
+          } catch (e) {
+            console.warn('Failed to bootstrap full profile after OAuth:', e);
+          }
 
           if (wasRegisterAttempt) {
 

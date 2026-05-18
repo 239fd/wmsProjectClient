@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, Paper, Button, Stack, Chip, Tooltip,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
   Dialog, DialogTitle, DialogContent, DialogActions, DialogContentText,
-  TextField, MenuItem, Select, InputLabel, FormControl,
+  TextField, MenuItem, Select, InputLabel, FormControl, FormLabel, FormHelperText,
+  Checkbox, FormControlLabel, Radio, RadioGroup,
   IconButton, CircularProgress, Alert, LinearProgress, Grid, Divider, Autocomplete
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -39,6 +40,13 @@ const STRATEGY = [
   { value: 'FIFO', label: 'FIFO — first in first out' },
 ];
 
+const EXPORT_CURRENCIES = [
+  { value: 'USD', label: 'USD — доллар США' },
+  { value: 'EUR', label: 'EUR — евро' },
+  { value: 'RUB', label: 'RUB — российский рубль' },
+  { value: 'CNY', label: 'CNY — китайский юань' },
+];
+
 const ITEM_STATUS = {
   PENDING:   { label: 'Ожидает',  color: 'default' },
   PICKING:   { label: 'Подбор',   color: 'warning' },
@@ -55,6 +63,9 @@ const ShipPage = () => {
 
   const { data: warehouses } = useWarehouses();
   const [requests, setRequests] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -78,14 +89,17 @@ const ShipPage = () => {
     if (!orgId) return;
     setLoading(true);
     try {
-      const list = await shipRequestService.list().catch(() => []);
-      setRequests(Array.isArray(list) ? list : (list?.content || []));
+      const res = await shipRequestService.list({ page, size: rowsPerPage, sort: 'createdAt,desc' });
+      setRequests(Array.isArray(res) ? res : (res?.content || []));
+      setTotal(typeof res?.totalElements === 'number' ? res.totalElements : (res?.content?.length || 0));
     } catch (err) {
       notify(err.message || 'Не удалось загрузить заявки', 'error');
+      setRequests([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [orgId, notify]);
+  }, [orgId, page, rowsPerPage, notify]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -159,7 +173,7 @@ const ShipPage = () => {
   const handleComplete = async () => {
     setDetailBusy(true);
     try {
-      await shipRequestService.complete(detailRequest.requestId, {});
+      await shipRequestService.complete(detailRequest.requestId);
       notify('Заявка завершена, документы сгенерированы');
       setDetailRequest(null);
       setConfirm({ open: false, action: null });
@@ -233,6 +247,7 @@ const ShipPage = () => {
           ) : filteredRequests.length === 0 ? (
             <EmptyState title="По выбранному статусу заявок нет" sx={{ py: 6 }} />
           ) : (
+            <>
             <TableContainer>
               <Table>
                 <TableHead>
@@ -294,6 +309,21 @@ const ShipPage = () => {
                 </TableBody>
               </Table>
             </TableContainer>
+            <TablePagination
+              component="div"
+              count={total}
+              page={page}
+              onPageChange={(_, p) => setPage(p)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(e) => {
+                setRowsPerPage(parseInt(e.target.value, 10));
+                setPage(0);
+              }}
+              rowsPerPageOptions={[10, 20, 50, 100]}
+              labelRowsPerPage="Строк на странице"
+              labelDisplayedRows={({ from, to, count }) => `${from}-${to} из ${count}`}
+            />
+            </>
           )}
         </Paper>
 
@@ -302,6 +332,7 @@ const ShipPage = () => {
           open={createOpen}
           onClose={() => !createBusy && setCreateOpen(false)}
           warehouses={warehouses}
+          userWarehouseId={user?.warehouseId}
           busy={createBusy}
           setBusy={setCreateBusy}
           onSuccess={async () => {
@@ -377,7 +408,7 @@ const ShipPage = () => {
                           <TableCell align="right">План</TableCell>
                           <TableCell align="right">Подобрано</TableCell>
                           <TableCell>Статус</TableCell>
-                          {detailRequest.status === 'PICKING' && (
+                          {(detailRequest.status === 'PICKING' || detailRequest.status === 'PLANNED') && (
                             <TableCell align="right" sx={{ minWidth: 280 }}>Подбор</TableCell>
                           )}
                         </TableRow>
@@ -412,7 +443,7 @@ const ShipPage = () => {
                               <TableCell>
                                 <Chip label={itemStat.label} color={itemStat.color} size="small" />
                               </TableCell>
-                              {detailRequest.status === 'PICKING' && (
+                              {(detailRequest.status === 'PICKING' || detailRequest.status === 'PLANNED') && (
                                 <TableCell align="right">
                                   <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
                                     <TextField
@@ -528,9 +559,10 @@ const ShipPage = () => {
   );
 };
 
-const CreateRequestDialog = ({ open, onClose, warehouses, busy, setBusy, onSuccess, notify }) => {
+const CreateRequestDialog = ({ open, onClose, warehouses, userWarehouseId, busy, setBusy, onSuccess, notify }) => {
   const [productOptions, setProductOptions] = useState([]);
   const [productSearchBusy, setProductSearchBusy] = useState(false);
+  const [addItemOpen, setAddItemOpen] = useState(false);
 
   const {
     register, handleSubmit, control, reset, getValues, watch, trigger,
@@ -540,7 +572,11 @@ const CreateRequestDialog = ({ open, onClose, warehouses, busy, setBusy, onSucce
     defaultValues: {
       warehouseId: '',
       recipientName: '', recipientAddress: '', recipientInn: '',
-      plannedDate: '', comment: '', strategy: 'AUTO', items: [],
+      plannedDate: '', comment: '', strategy: 'AUTO',
+      shipmentType: 'DOMESTIC', currency: 'BYN',
+      documentLayout: 'HORIZONTAL', domesticDocumentKind: 'TN',
+      recipientCountry: '', recipientGln: '',
+      items: [],
     },
     mode: 'onTouched',
   });
@@ -551,9 +587,13 @@ const CreateRequestDialog = ({ open, onClose, warehouses, busy, setBusy, onSucce
   useEffect(() => {
     if (open) {
       reset({
-        warehouseId: warehouses[0]?.warehouseId || warehouses[0]?.id || '',
+        warehouseId: userWarehouseId || warehouses[0]?.warehouseId || warehouses[0]?.id || '',
         recipientName: '', recipientAddress: '', recipientInn: '',
-        plannedDate: '', comment: '', strategy: 'AUTO', items: [],
+        plannedDate: '', comment: '', strategy: 'AUTO',
+        shipmentType: 'DOMESTIC', currency: 'BYN',
+        documentLayout: 'HORIZONTAL', domesticDocumentKind: 'TN',
+        recipientCountry: '', recipientGln: '',
+        items: [],
       });
       setWizardKey((k) => k + 1);
     }
@@ -584,6 +624,7 @@ const CreateRequestDialog = ({ open, onClose, warehouses, busy, setBusy, onSucce
   const onSubmit = async (values) => {
     setBusy(true);
     try {
+      const isExport = values.shipmentType === 'EXPORT';
       await shipRequestService.create({
         warehouseId: values.warehouseId,
         recipientName: values.recipientName || null,
@@ -592,6 +633,12 @@ const CreateRequestDialog = ({ open, onClose, warehouses, busy, setBusy, onSucce
         plannedDate: values.plannedDate || null,
         comment: values.comment || null,
         strategy: values.strategy,
+        shipmentType: values.shipmentType,
+        currency: values.currency,
+        documentLayout: isExport ? null : values.documentLayout,
+        domesticDocumentKind: isExport ? null : values.domesticDocumentKind,
+        recipientCountry: isExport ? (values.recipientCountry || null) : null,
+        recipientGln: isExport ? (values.recipientGln || null) : null,
         items: values.items.map((it) => ({
           productId: it.productId,
           expectedQty: it.expectedQty,
@@ -608,6 +655,8 @@ const CreateRequestDialog = ({ open, onClose, warehouses, busy, setBusy, onSucce
 
   const watchedItems = watch('items');
   const watchedAll = watch();
+  const watchedShipmentType = watch('shipmentType');
+  const isExport = watchedShipmentType === 'EXPORT';
   const warehouseName = (id) => warehouses.find((w) => (w.warehouseId || w.id) === id)?.name || '—';
   const strategyLabel = (v) => STRATEGY.find((s) => s.value === v)?.label || v;
 
@@ -653,6 +702,115 @@ const CreateRequestDialog = ({ open, onClose, warehouses, busy, setBusy, onSucce
           {...register('comment')}
         />
       </Grid>
+
+      <Grid size={12}>
+        <Divider sx={{ my: 1 }}>
+          <Chip label="Документы отгрузки" size="small" />
+        </Divider>
+      </Grid>
+
+      <Grid size={12}>
+        <Controller
+          name="shipmentType"
+          control={control}
+          render={({ field }) => (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={field.value === 'EXPORT'}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const next = e.target.checked ? 'EXPORT' : 'DOMESTIC';
+                    field.onChange(next);
+                    // При переключении сбрасываем валюту на разумный default,
+                    // чтобы yup-валидация не блокировала пользователя сразу.
+                    if (next === 'EXPORT' && getValues('currency') === 'BYN') {
+                      reset({ ...getValues(), shipmentType: 'EXPORT', currency: 'USD' });
+                    } else if (next === 'DOMESTIC') {
+                      reset({ ...getValues(), shipmentType: 'DOMESTIC', currency: 'BYN' });
+                    }
+                  }}
+                />
+              }
+              label="На экспорт (пакет ТН + CMR + инвойс)"
+            />
+          )}
+        />
+      </Grid>
+
+      {!isExport && (
+        <>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Controller
+              name="domesticDocumentKind"
+              control={control}
+              render={({ field }) => (
+                <FormControl disabled={busy}>
+                  <FormLabel>Тип документа</FormLabel>
+                  <RadioGroup row {...field}>
+                    <FormControlLabel value="TN" control={<Radio />} label="ТН (товарная)" />
+                    <FormControlLabel value="TTN" control={<Radio />} label="ТТН (товарно-транспортная)" />
+                  </RadioGroup>
+                </FormControl>
+              )}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Controller
+              name="documentLayout"
+              control={control}
+              render={({ field }) => (
+                <FormControl disabled={busy}>
+                  <FormLabel>Ориентация</FormLabel>
+                  <RadioGroup row {...field}>
+                    <FormControlLabel value="HORIZONTAL" control={<Radio />} label="Горизонтальная" />
+                    <FormControlLabel value="VERTICAL" control={<Radio />} label="Вертикальная" />
+                  </RadioGroup>
+                </FormControl>
+              )}
+            />
+          </Grid>
+        </>
+      )}
+
+      {isExport && (
+        <>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <Controller
+              name="currency"
+              control={control}
+              render={({ field }) => (
+                <FormControl fullWidth error={!!errors.currency} disabled={busy}>
+                  <InputLabel>Валюта контракта</InputLabel>
+                  <Select {...field} label="Валюта контракта" variant="outlined">
+                    {EXPORT_CURRENCIES.map((c) => (
+                      <MenuItem key={c.value} value={c.value}>{c.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <TextField
+              label="Страна получателя"
+              fullWidth disabled={busy}
+              {...register('recipientCountry')}
+              error={!!errors.recipientCountry}
+              helperText={errors.recipientCountry?.message}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <TextField
+              label="GLN получателя"
+              fullWidth disabled={busy}
+              {...register('recipientGln')}
+              error={!!errors.recipientGln}
+              helperText={errors.recipientGln?.message || 'Опционально, для международной торговли'}
+            />
+          </Grid>
+        </>
+      )}
     </Grid>
   );
 
@@ -666,13 +824,19 @@ const CreateRequestDialog = ({ open, onClose, warehouses, busy, setBusy, onSucce
             render={({ field }) => (
               <FormControl fullWidth error={!!errors.warehouseId}>
                 <InputLabel>Склад</InputLabel>
-                <Select {...field} label="Склад" variant="outlined" disabled={busy}>
+                <Select
+                  {...field}
+                  label="Склад"
+                  variant="outlined"
+                  disabled={busy || !!userWarehouseId}
+                >
                   {warehouses.map((w) => (
                     <MenuItem key={w.warehouseId || w.id} value={w.warehouseId || w.id}>
                       {w.name}
                     </MenuItem>
                   ))}
                 </Select>
+                {userWarehouseId && <FormHelperText>Вы привязаны к этому складу</FormHelperText>}
               </FormControl>
             )}
           />
@@ -697,16 +861,50 @@ const CreateRequestDialog = ({ open, onClose, warehouses, busy, setBusy, onSucce
 
       <Divider><Chip label="Позиции заявки" size="small" /></Divider>
 
-      <Autocomplete
-        options={productOptions}
-        getOptionLabel={(o) => `${o.name || ''}${o.sku ? ` (${o.sku})` : ''}`}
-        loading={productSearchBusy}
-        onInputChange={(_, q) => handleProductSearch(q)}
-        onChange={(_, val) => { handleAddItem(val); }}
-        renderInput={(params) => (
-          <TextField {...params} label="Добавить товар" placeholder="≥2 символов" />
-        )}
-      />
+      <Stack direction="row" spacing={2} alignItems="center">
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setAddItemOpen(true)}
+          disabled={busy}
+        >
+          Добавить позицию
+        </Button>
+        <Typography variant="caption" color="text.secondary">
+          Позиций в заявке: <b>{itemsField.fields.length}</b>
+        </Typography>
+      </Stack>
+
+      <Dialog open={addItemOpen} onClose={() => setAddItemOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Добавить позицию в заявку</DialogTitle>
+        <DialogContent dividers>
+          <Autocomplete
+            options={productOptions}
+            getOptionLabel={(o) => `${o.name || ''}${o.sku ? ` (${o.sku})` : ''}`}
+            loading={productSearchBusy}
+            onInputChange={(_, q) => handleProductSearch(q)}
+            onChange={(_, val) => {
+              if (val) {
+                handleAddItem(val);
+                setAddItemOpen(false);
+              }
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Поиск товара по названию или SKU"
+                placeholder="Введите минимум 2 символа"
+                autoFocus
+              />
+            )}
+            noOptionsText="Начните вводить, чтобы найти товар"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddItemOpen(false)}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+
       {errors.items && typeof errors.items.message === 'string' && (
         <Alert severity="warning">{errors.items.message}</Alert>
       )}
@@ -779,6 +977,33 @@ const CreateRequestDialog = ({ open, onClose, warehouses, busy, setBusy, onSucce
             <Typography variant="caption" color="text.secondary">Стратегия списания</Typography>
             <Typography>{strategyLabel(watchedAll.strategy)}</Typography>
           </Grid>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Typography variant="caption" color="text.secondary">Тип отгрузки</Typography>
+            <Typography>
+              {watchedAll.shipmentType === 'EXPORT' ? 'Экспорт' : 'Внутренняя'}
+              {' • '}
+              {watchedAll.currency}
+            </Typography>
+          </Grid>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Typography variant="caption" color="text.secondary">Документы</Typography>
+            <Typography>
+              {watchedAll.shipmentType === 'EXPORT'
+                ? 'ТН + CMR + инвойс'
+                : `${watchedAll.domesticDocumentKind === 'TTN' ? 'ТТН' : 'ТН'}, ${
+                    watchedAll.documentLayout === 'VERTICAL' ? 'вертикальная' : 'горизонтальная'
+                  }`}
+            </Typography>
+          </Grid>
+          {watchedAll.shipmentType === 'EXPORT' && (watchedAll.recipientCountry || watchedAll.recipientGln) && (
+            <Grid size={12}>
+              <Typography variant="caption" color="text.secondary">Получатель (экспорт)</Typography>
+              <Typography>
+                {[watchedAll.recipientCountry, watchedAll.recipientGln && `GLN: ${watchedAll.recipientGln}`]
+                  .filter(Boolean).join(' • ')}
+              </Typography>
+            </Grid>
+          )}
           {watchedAll.comment && (
             <Grid size={12}>
               <Typography variant="caption" color="text.secondary">Комментарий</Typography>
@@ -812,7 +1037,14 @@ const CreateRequestDialog = ({ open, onClose, warehouses, busy, setBusy, onSucce
   );
 
   const steps = [
-    { key: 'recipient', label: 'Получатель', fields: ['recipientName', 'recipientAddress', 'recipientInn', 'plannedDate', 'comment'], render: renderStep1 },
+    {
+      key: 'recipient',
+      label: 'Получатель и документы',
+      fields: ['recipientName', 'recipientAddress', 'recipientInn', 'plannedDate', 'comment',
+        'shipmentType', 'currency', 'documentLayout', 'domesticDocumentKind',
+        'recipientCountry', 'recipientGln'],
+      render: renderStep1,
+    },
     { key: 'items', label: 'Состав заявки', fields: ['warehouseId', 'strategy', 'items'], render: renderStep2 },
     { key: 'review', label: 'Подтверждение', fields: [], render: renderStep3 },
   ];

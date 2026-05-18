@@ -3,7 +3,7 @@ import {
   Box, Typography, Button, Paper,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions, DialogContentText,
-  TextField, MenuItem, Select, InputLabel, FormControl,
+  TextField, MenuItem, Select, InputLabel, FormControl, FormHelperText,
   Chip, InputAdornment, Tooltip, Alert, CircularProgress, Stack
 } from '@mui/material';
 import {
@@ -130,7 +130,14 @@ const EmployeesPage = () => {
         token: res.invitationToken || res.token,
         email: values.email,
         role: values.role,
+        emailSent: res.emailSent,
       });
+      if (res.emailSent === false) {
+        const detail = res.emailError ? ` Причина: ${res.emailError}` : '';
+        notify(`Приглашение создано, но письмо отправить не удалось. Скопируйте ссылку вручную.${detail}`, 'warning', { duration: 12000 });
+      } else if (res.emailSent === true) {
+        notify('Приглашение отправлено на email');
+      }
     } catch (err) {
       notify(err.message || 'Не удалось создать приглашение', 'error');
     } finally {
@@ -387,16 +394,18 @@ const EmployeesPage = () => {
                   name="warehouseId"
                   control={inviteControl}
                   render={({ field }) => (
-                    <FormControl fullWidth>
-                      <InputLabel>Склад (необязательно)</InputLabel>
-                      <Select {...field} label="Склад (необязательно)" variant="outlined" disabled={inviteBusy}>
-                        <MenuItem value="">— не привязывать —</MenuItem>
+                    <FormControl fullWidth error={!!inviteErrors.warehouseId}>
+                      <InputLabel>Склад</InputLabel>
+                      <Select {...field} label="Склад" variant="outlined" disabled={inviteBusy}>
                         {warehouses.map((w) => (
                           <MenuItem key={w.warehouseId || w.id} value={w.warehouseId || w.id}>
                             {w.name}
                           </MenuItem>
                         ))}
                       </Select>
+                      {inviteErrors.warehouseId && (
+                        <FormHelperText>{inviteErrors.warehouseId.message}</FormHelperText>
+                      )}
                     </FormControl>
                   )}
                 />

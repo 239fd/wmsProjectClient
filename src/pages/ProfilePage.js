@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box, Avatar, TextField, Button, Stack, Paper, CircularProgress, Alert,
   Typography, Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
@@ -42,6 +42,7 @@ const ProfilePage = () => {
   const [editing, setEditing] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [pwdDialogOpen, setPwdDialogOpen] = useState(false);
+  const editEnabledAtRef = useRef(0);
 
   const profileForm = useForm({
     resolver: yupResolver(updateProfileSchema),
@@ -54,7 +55,7 @@ const ProfilePage = () => {
   }, [dispatch]);
 
   useEffect(() => {
-    if (user) {
+    if (user && !editing) {
       const parts = splitFullName(user.fullName);
       profileForm.reset({
         firstName: parts.firstName,
@@ -64,9 +65,13 @@ const ProfilePage = () => {
       });
     }
 
-  }, [user]);
+  }, [user, editing]);
 
-  const handleEdit = () => setEditing(true);
+  const handleEdit = (e) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    editEnabledAtRef.current = Date.now();
+    setEditing(true);
+  };
 
   const handleCancel = () => {
     if (user) {
@@ -82,17 +87,28 @@ const ProfilePage = () => {
   };
 
   const onSaveProfile = async (values) => {
+    if (!editing) return;
+    if (Date.now() - editEnabledAtRef.current < 400) {
+      return;
+    }
     const result = await dispatch(updateProfile({
       firstName: values.firstName.trim(),
       lastName: values.lastName.trim(),
       middleName: values.middleName?.trim() || null,
       email: values.email.trim(),
     }));
-    if (!result.error) {
-      setEditing(false);
-      notify('Изменения сохранены');
-      dispatch(fetchProfile());
+    if (result.error) {
+      notify(result.payload || result.error.message || 'Не удалось сохранить изменения', 'error');
+      return;
     }
+    setEditing(false);
+    notify('Изменения сохранены');
+    dispatch(fetchProfile());
+  };
+
+  const onSaveError = (formErrors) => {
+    const firstMsg = Object.values(formErrors).map((e) => e?.message).filter(Boolean)[0];
+    notify(firstMsg || 'Проверьте правильность заполнения формы', 'warning');
   };
 
   const handlePhotoUpload = async (e) => {
@@ -148,7 +164,7 @@ const ProfilePage = () => {
           Личный кабинет
         </Typography>
 
-        <form onSubmit={handleSubmit(onSaveProfile)} noValidate>
+        <form onSubmit={handleSubmit(onSaveProfile, onSaveError)} noValidate>
           <Stack spacing={3} alignItems="center">
             <Box sx={{ position: 'relative', width: 120, height: 120 }}>
               <Avatar src={buildPhotoSrc(user?.photoBase64)} sx={{ width: 120, height: 120 }} />
@@ -223,19 +239,7 @@ const ProfilePage = () => {
               />
             </Stack>
 
-            {!editing ? (
-              <Stack direction="row" spacing={2}>
-                <Button variant="contained" type="button" onClick={handleEdit}>Редактировать</Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<LockResetIcon />}
-                  onClick={() => setPwdDialogOpen(true)}
-                  type="button"
-                >
-                  Сменить пароль
-                </Button>
-              </Stack>
-            ) : (
+            {editing && (
               <Stack direction="row" spacing={2}>
                 <Button
                   variant="contained"
@@ -252,6 +256,20 @@ const ProfilePage = () => {
             )}
           </Stack>
         </form>
+
+        {!editing && (
+          <Stack direction="row" spacing={2} sx={{ mt: 3, justifyContent: 'center' }}>
+            <Button variant="contained" type="button" onClick={handleEdit}>Редактировать</Button>
+            <Button
+              variant="outlined"
+              startIcon={<LockResetIcon />}
+              onClick={() => setPwdDialogOpen(true)}
+              type="button"
+            >
+              Сменить пароль
+            </Button>
+          </Stack>
+        )}
       </Paper>
 
       <ChangePasswordDialog

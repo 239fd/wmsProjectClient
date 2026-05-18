@@ -207,6 +207,9 @@ const RegisterByInvitationPage = () => {
               autoComplete="email"
               {...register('email')}
               error={!!errors.email}
+              slotProps={{
+                inputLabel: { shrink: !!watch('email') || validation.status === 'valid' },
+              }}
               helperText={
                 errors.email?.message
                 || (validation.status === 'valid'

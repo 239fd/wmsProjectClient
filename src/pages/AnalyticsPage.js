@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box, Typography, Grid, Paper, Card, CardContent, Tabs, Tab, Chip, Skeleton, Alert,
   MenuItem, Select, InputLabel, FormControl, LinearProgress,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Stack,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, Stack,
   TextField, Button,
 } from '@mui/material';
 import {
@@ -471,27 +471,33 @@ const OperationsTab = ({ dateRange }) => {
   const [typeFilter, setTypeFilter] = useState('');
   const [whFilter, setWhFilter] = useState('');
   const [ops, setOps] = useState(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {};
+      const params = { page, size: rowsPerPage, sort: 'createdAt,desc' };
       if (typeFilter) params.type = typeFilter;
       if (whFilter) params.warehouseId = whFilter;
       if (dateRange?.startDate) params.startDate = dateRange.startDate;
       if (dateRange?.endDate) params.endDate = dateRange.endDate;
       const data = await productService.getOperationsHistory(params);
       const arr = Array.isArray(data) ? data : (data?.content || []);
-      arr.sort((a, b) => new Date(b.createdAt || b.operationDate || 0) - new Date(a.createdAt || a.operationDate || 0));
       setOps(arr);
+      setTotal(typeof data?.totalElements === 'number' ? data.totalElements : arr.length);
     } catch (err) {
       notify(err.message || 'Не удалось загрузить операции', 'error');
       setOps([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [typeFilter, whFilter, dateRange?.startDate, dateRange?.endDate, notify]);
+  }, [typeFilter, whFilter, dateRange?.startDate, dateRange?.endDate, page, rowsPerPage, notify]);
+
+  useEffect(() => { setPage(0); }, [typeFilter, whFilter, dateRange?.startDate, dateRange?.endDate]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -536,7 +542,7 @@ const OperationsTab = ({ dateRange }) => {
         <Box sx={{ flex: 1 }} />
         {!loading && ops && (
           <Typography variant="body2" color="text.secondary">
-            Найдено: <b>{ops.length}</b>
+            Найдено: <b>{total}</b>
           </Typography>
         )}
       </Stack>
@@ -552,6 +558,7 @@ const OperationsTab = ({ dateRange }) => {
           description="Попробуйте сбросить фильтры или расширить период"
         />
       ) : (
+        <>
         <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 560 }}>
           <Table size="small" stickyHeader>
             <TableHead>
@@ -593,6 +600,21 @@ const OperationsTab = ({ dateRange }) => {
             </TableBody>
           </Table>
         </TableContainer>
+        <TablePagination
+          component="div"
+          count={total}
+          page={page}
+          onPageChange={(_, p) => setPage(p)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(parseInt(e.target.value, 10));
+            setPage(0);
+          }}
+          rowsPerPageOptions={[10, 20, 50, 100]}
+          labelRowsPerPage="Строк на странице"
+          labelDisplayedRows={({ from, to, count }) => `${from}-${to} из ${count}`}
+        />
+        </>
       )}
     </Box>
   );
@@ -636,11 +658,7 @@ const EmployeesTab = ({ orgId }) => {
   const sortedAnalytics = useMemo(() => {
     if (!analytics) return [];
     const arr = [...analytics];
-    arr.sort((a, b) => {
-      const aOps = Number(a.operationsStats?.totalOperations || 0);
-      const bOps = Number(b.operationsStats?.totalOperations || 0);
-      return bOps - aOps;
-    });
+    arr.sort((a, b) => Number(b.daysWorked || 0) - Number(a.daysWorked || 0));
     return arr;
   }, [analytics]);
 
@@ -677,16 +695,11 @@ const EmployeesTab = ({ orgId }) => {
                 <TableCell>Сотрудник</TableCell>
                 <TableCell>Роль</TableCell>
                 <TableCell align="right">В компании</TableCell>
-                <TableCell align="right">Всего операций</TableCell>
-                <TableCell>Разбивка по типам</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {sortedAnalytics.map((a) => {
                 const emp = empMap.get(a.userId);
-                const stats = a.operationsStats || {};
-                const total = Number(stats.totalOperations || 0);
-                const breakdown = stats.byType || stats.operationsByType || null;
                 return (
                   <TableRow key={a.userId}>
                     <TableCell>
@@ -702,30 +715,6 @@ const EmployeesTab = ({ orgId }) => {
                     </TableCell>
                     <TableCell align="right">
                       {a.daysWorked != null ? `${a.daysWorked} дн.` : '—'}
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2" fontWeight={total > 0 ? 700 : 400}>
-                        {total}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      {breakdown && typeof breakdown === 'object' && Object.keys(breakdown).length > 0 ? (
-                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                          {Object.entries(breakdown).map(([type, count]) => {
-                            const meta = opMeta(type);
-                            return (
-                              <Chip
-                                key={type}
-                                label={`${meta.label}: ${count}`}
-                                size="small"
-                                sx={{ bgcolor: meta.color + '15', color: meta.color }}
-                              />
-                            );
-                          })}
-                        </Stack>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">—</Typography>
-                      )}
                     </TableCell>
                   </TableRow>
                 );

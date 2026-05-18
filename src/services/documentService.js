@@ -1,26 +1,30 @@
 
 import httpService from './httpService';
-import { API_ENDPOINTS } from '../config/api';
-
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8765';
+import { API_ENDPOINTS, BACKEND_URL as API_BASE_URL } from '../config/api';
 
 const documentService = {
 
-  async list({ page = 0, size = 20 } = {}) {
-    return httpService.get(`${API_ENDPOINTS.DOCUMENTS.LIST}?page=${page}&size=${size}`);
+  async list({ page = 0, size = 20, sort = 'generatedAt,desc', type } = {}) {
+    const params = { page, size, sort };
+    if (type) params.type = type;
+    return httpService.get(API_ENDPOINTS.DOCUMENT_REGISTRY.LIST, { params });
   },
 
   async getMetadata(id) {
-    return httpService.get(API_ENDPOINTS.DOCUMENTS.METADATA(id));
+    return httpService.get(API_ENDPOINTS.DOCUMENT_REGISTRY.BY_ID(id));
   },
 
-  getDownloadUrl(id) {
-    return `${API_BASE_URL}${API_ENDPOINTS.DOCUMENTS.BY_ID(id).replace(API_BASE_URL, '')}`;
+  async getByOperation(operationId) {
+    return httpService.get(API_ENDPOINTS.DOCUMENT_REGISTRY.BY_OPERATION(operationId));
+  },
+
+  async getPresignedUrl(id) {
+    return httpService.get(API_ENDPOINTS.DOCUMENT_REGISTRY.PRESIGNED_URL(id));
   },
 
   async download(id, filename = 'document.pdf') {
     const token = localStorage.getItem('accessToken');
-    const url = `${API_BASE_URL}${API_ENDPOINTS.DOCUMENTS.BY_ID(id).replace(API_BASE_URL, '')}`;
+    const url = API_ENDPOINTS.DOCUMENT_REGISTRY.DOWNLOAD(id);
     const response = await fetch(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
@@ -41,6 +45,10 @@ const documentService = {
   async generate(type, data, format = 'pdf') {
     const url = `${API_ENDPOINTS.DOCUMENTS.GENERATE(type)}?format=${encodeURIComponent(format)}`;
     return httpService.post(url, data);
+  },
+
+  async getOfficeHealth() {
+    return httpService.get(API_ENDPOINTS.OFFICE_RPA.HEALTH);
   },
 };
 

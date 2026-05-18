@@ -21,25 +21,23 @@ import { useSelector } from 'react-redux';
 import { selectUser } from '../store/slices/authSlice';
 import { useWarehouses, useEmployees, useSuppliers } from '../hooks';
 import shipRequestService from '../services/shipRequestService';
-import supplyService from '../services/supplyService';
 import productService from '../services/productService';
 
 const MAX_WIDTH = 1440;
 const ACTIVE_SESSION_KEY = (userId) => `wms_inventory_active_${userId}`;
 
 const ALL_ACTIONS = [
-  { key: 'receive',     label: 'Приём товара',     desc: 'Зафиксировать приёмку',         path: '/main/receive',     icon: CallReceivedIcon, color: '#2e7d32', allowed: ['WORKER', 'DIRECTOR'] },
-  { key: 'ship',        label: 'Отгрузка',         desc: 'Заявки на отгрузку',            path: '/main/ship',        icon: LocalShippingIcon, color: '#1976d2', allowed: ['WORKER', 'DIRECTOR'] },
-  { key: 'inventory',   label: 'Инвентаризация',   desc: 'Активная сессия и записи',      path: '/main/inventory',   icon: AssignmentIcon, color: '#0288d1', allowed: 'ALL' },
-  { key: 'revaluation', label: 'Переоценка',       desc: 'Изменение учётной цены',        path: '/main/revaluation', icon: EditIcon, color: '#ed6c02', allowed: ['ACCOUNTANT', 'DIRECTOR'] },
-  { key: 'writeoff',    label: 'Списание',         desc: 'Списать товар по причине',      path: '/main/writeoff',    icon: RemoveCircleOutlineIcon, color: '#d32f2f', allowed: ['ACCOUNTANT', 'DIRECTOR'] },
-  { key: 'analytics',   label: 'Аналитика',        desc: 'KPI и динамика операций',       path: '/main/analytics',   icon: AssessmentIcon, color: '#9c27b0', allowed: ['ACCOUNTANT', 'DIRECTOR'] },
-  { key: 'supplies',    label: 'Поставки',         desc: 'Плановые поставки',             path: '/main/supplies',    icon: InventoryIcon, color: '#00695c', allowed: 'ALL' },
-  { key: 'suppliers',   label: 'Поставщики',       desc: 'Справочник поставщиков',        path: '/main/suppliers',   icon: StorefrontIcon, color: '#5d4037', allowed: ['ACCOUNTANT', 'DIRECTOR'] },
-  { key: 'documents',   label: 'Документы',        desc: 'История и скачивание актов',    path: '/main/documents',   icon: DescriptionIcon, color: '#455a64', allowed: 'ALL' },
+  { key: 'receive',     label: 'Приём товара',     desc: 'Зафиксировать приёмку',         path: '/main/receive',     icon: CallReceivedIcon, color: '#2e7d32', allowed: ['WORKER'] },
+  { key: 'ship',        label: 'Отгрузка',         desc: 'Заявки на отгрузку',            path: '/main/ship',        icon: LocalShippingIcon, color: '#1976d2', allowed: ['WORKER'] },
+  { key: 'inventory',   label: 'Инвентаризация',   desc: 'Активная сессия и записи',      path: '/main/inventory',   icon: AssignmentIcon, color: '#0288d1', allowed: ['ACCOUNTANT'] },
+  { key: 'revaluation', label: 'Переоценка',       desc: 'Изменение учётной цены',        path: '/main/revaluation', icon: EditIcon, color: '#ed6c02', allowed: ['ACCOUNTANT'] },
+  { key: 'writeoff',    label: 'Списание',         desc: 'Списать товар по причине',      path: '/main/writeoff',    icon: RemoveCircleOutlineIcon, color: '#d32f2f', allowed: ['ACCOUNTANT'] },
+  { key: 'analytics',   label: 'Аналитика',        desc: 'KPI и динамика операций',       path: '/main/analytics',   icon: AssessmentIcon, color: '#9c27b0', allowed: ['DIRECTOR'] },
+  { key: 'supplies',    label: 'Поставки',         desc: 'Плановые поставки',             path: '/main/supplies',    icon: InventoryIcon, color: '#00695c', allowed: ['WORKER'] },
+  { key: 'suppliers',   label: 'Поставщики',       desc: 'Справочник поставщиков',        path: '/main/suppliers',   icon: StorefrontIcon, color: '#5d4037', allowed: ['WORKER'] },
+  { key: 'documents',   label: 'Документы',        desc: 'История и скачивание актов',    path: '/main/documents',   icon: DescriptionIcon, color: '#455a64', allowed: ['WORKER', 'ACCOUNTANT'] },
   { key: 'employees',   label: 'Сотрудники',       desc: 'Управление и приглашения',      path: '/main/employees',   icon: GroupIcon, color: '#6d4c41', allowed: ['DIRECTOR'] },
   { key: 'organization',label: 'Организация',      desc: 'Реквизиты и склады',            path: '/main/organization',icon: BusinessIcon, color: '#37474f', allowed: ['DIRECTOR'] },
-  { key: 'erp',         label: 'ERP Extractor',    desc: 'Извлечение поставок из ERP',    path: '/main/erp-extractor', icon: CloudSyncIcon, color: '#3949ab', allowed: ['DIRECTOR'] },
 ];
 
 const ROLE_LABEL = { WORKER: 'Работник', ACCOUNTANT: 'Бухгалтер', DIRECTOR: 'Директор' };
@@ -272,7 +270,6 @@ const AccountantDashboard = ({ user }) => {
   const userId = user?.userId;
 
   const [markedCount, setMarkedCount] = useState(undefined);
-  const [supplyCount, setSupplyCount] = useState(undefined);
   const [recentOps, setRecentOps] = useState(undefined);
 
   useEffect(() => {
@@ -285,16 +282,6 @@ const AccountantDashboard = ({ user }) => {
         setMarkedCount(arr.length);
       } catch {
         if (!cancelled) setMarkedCount(null);
-      }
-    })();
-    (async () => {
-      try {
-        const data = await supplyService.list();
-        if (cancelled) return;
-        const arr = Array.isArray(data) ? data : (data?.content || []);
-        setSupplyCount(arr.filter((s) => s.status === 'PLANNED' || s.status === 'IN_PROGRESS').length);
-      } catch {
-        if (!cancelled) setSupplyCount(null);
       }
     })();
     (async () => {
@@ -335,41 +322,6 @@ const AccountantDashboard = ({ user }) => {
         </Alert>
       )}
 
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-          <StatCard
-            label="Помечено к списанию"
-            value={markedCount === undefined ? null : markedCount}
-            loading={markedCount === undefined}
-            icon={WarningAmberIcon}
-            color="#d32f2f"
-            onClick={() => navigate('/main/writeoff')}
-            hint="Из инвентаризации"
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-          <StatCard
-            label="Активные поставки"
-            value={supplyCount === undefined ? null : supplyCount}
-            loading={supplyCount === undefined}
-            icon={InventoryIcon}
-            color="#00695c"
-            onClick={() => navigate('/main/supplies')}
-            hint="PLANNED + IN_PROGRESS"
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-          <StatCard
-            label="Аналитика"
-            value={null}
-            icon={AssessmentIcon}
-            color="#9c27b0"
-            onClick={() => navigate('/main/analytics')}
-            hint="KPI и динамика операций"
-          />
-        </Grid>
-      </Grid>
-
       <RecentOpsTable
         ops={recentOps === undefined || recentOps === null ? [] : recentOps}
         loading={recentOps === undefined}
@@ -384,27 +336,10 @@ const DirectorDashboard = () => {
   const navigate = useNavigate();
   const { data: warehouses } = useWarehouses();
   const { data: employees } = useEmployees();
-  const { data: suppliers } = useSuppliers();
 
-  const [shipCount, setShipCount] = useState(undefined);
-  const [supplyCount, setSupplyCount] = useState(undefined);
   const [recentOps, setRecentOps] = useState(undefined);
 
   const loadAll = useCallback(async () => {
-    try {
-      const list = await shipRequestService.list();
-      const arr = Array.isArray(list) ? list : (list?.content || []);
-      setShipCount(arr.filter((r) => r.status === 'PLANNED' || r.status === 'PICKING').length);
-    } catch {
-      setShipCount(null);
-    }
-    try {
-      const list = await supplyService.list();
-      const arr = Array.isArray(list) ? list : (list?.content || []);
-      setSupplyCount(arr.filter((s) => s.status === 'PLANNED' || s.status === 'IN_PROGRESS').length);
-    } catch {
-      setSupplyCount(null);
-    }
     try {
       const data = await productService.getOperationsHistory();
       let arr = Array.isArray(data) ? data : (data?.content || []);
@@ -422,26 +357,11 @@ const DirectorDashboard = () => {
   }, [loadAll]);
 
   const activeEmployees = employees.filter((e) => !e.isBlocked && e.isActive !== false).length;
-  const whWithoutResponsible = warehouses.filter((w) => !w.responsibleUserId).length;
 
   return (
     <Stack spacing={3} mb={4}>
-      {whWithoutResponsible > 0 && (
-        <Alert
-          severity="info"
-          action={
-            <Box sx={{ cursor: 'pointer', textDecoration: 'underline', mr: 1 }}
-                 onClick={() => navigate('/main/organization')}>
-              Назначить
-            </Box>
-          }
-        >
-          Складов без ответственного: <b>{whWithoutResponsible}</b>.
-        </Alert>
-      )}
-
       <Grid container spacing={2}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <StatCard
             label="Складов в организации"
             value={warehouses.length}
@@ -450,7 +370,7 @@ const DirectorDashboard = () => {
             onClick={() => navigate('/main/organization')}
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <StatCard
             label="Активных сотрудников"
             value={activeEmployees}
@@ -460,45 +380,14 @@ const DirectorDashboard = () => {
             hint={employees.length > activeEmployees ? `Всего: ${employees.length}` : undefined}
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <StatCard
-            label="Поставщиков"
-            value={suppliers.length}
-            icon={StorefrontIcon}
-            color="#5d4037"
-            onClick={() => navigate('/main/suppliers')}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard
-            label="Активных заявок на отгрузку"
-            value={shipCount === undefined ? null : shipCount}
-            loading={shipCount === undefined}
-            icon={LocalShippingIcon}
-            color="#1976d2"
-            onClick={() => navigate('/main/ship')}
-            hint="PLANNED + PICKING"
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard
-            label="Открытых поставок"
-            value={supplyCount === undefined ? null : supplyCount}
-            loading={supplyCount === undefined}
-            icon={InventoryIcon}
-            color="#00695c"
-            onClick={() => navigate('/main/supplies')}
-            hint="PLANNED + IN_PROGRESS"
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard
-            label="ERP-импорт"
+            label="Аналитика"
             value={null}
-            icon={CloudSyncIcon}
-            color="#3949ab"
-            onClick={() => navigate('/main/erp-extractor')}
-            hint="Запустить или проверить журнал"
+            icon={AssessmentIcon}
+            color="#9c27b0"
+            onClick={() => navigate('/main/analytics')}
+            hint="KPI и динамика операций"
           />
         </Grid>
       </Grid>

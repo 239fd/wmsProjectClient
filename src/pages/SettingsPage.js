@@ -2,27 +2,46 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, Paper, List, ListItem, ListItemText, Button, Stack,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
-  CircularProgress, Alert, Chip, Divider
+  CircularProgress, Alert, Chip, Divider,
+  FormControl, FormLabel, RadioGroup, FormControlLabel, Radio,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { logout, resetAuth } from '../store/slices/authSlice';
 import profileService from '../services/profileService';
+import documentService from '../services/documentService';
 import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
 import { ListSkeleton } from '../components/shared/LoadingSkeleton';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 
 const formatDateTime = (iso) => {
-  if (!iso) return '—';
+  if (!iso) return null;
   try {
     const d = new Date(iso);
     return `${d.toLocaleDateString('ru-RU')} ${d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
   } catch {
     return iso;
   }
+};
+
+const parseUserAgent = (ua) => {
+  if (!ua) return { browser: 'Неизвестное устройство', os: null };
+  const browserMatch = ua.match(/(Firefox|Chrome|Edg|Safari|Opera|OPR)\/([\d.]+)/);
+  const browser = browserMatch
+    ? `${browserMatch[1] === 'Edg' ? 'Edge' : browserMatch[1] === 'OPR' ? 'Opera' : browserMatch[1]} ${browserMatch[2].split('.')[0]}`
+    : 'Браузер';
+  let os = null;
+  if (/Windows NT 10/.test(ua)) os = 'Windows 10/11';
+  else if (/Windows NT 6.3/.test(ua)) os = 'Windows 8.1';
+  else if (/Mac OS X/.test(ua)) os = 'macOS';
+  else if (/Android/.test(ua)) os = 'Android';
+  else if (/iPhone|iPad/.test(ua)) os = 'iOS';
+  else if (/Linux/.test(ua)) os = 'Linux';
+  return { browser, os };
 };
 
 const SettingsPage = () => {
@@ -37,6 +56,33 @@ const SettingsPage = () => {
   const [openDelete, setOpenDelete] = useState(false);
   const [deleteTimer, setDeleteTimer] = useState(10);
   const [deleting, setDeleting] = useState(false);
+
+  const [generationMode, setGenerationMode] = useState(
+    () => localStorage.getItem('generationMode') || 'auto'
+  );
+  const [officeHealth, setOfficeHealth] = useState({ enabled: null, reason: null, loading: true });
+
+  const checkOfficeHealth = useCallback(async () => {
+    setOfficeHealth((prev) => ({ ...prev, loading: true }));
+    try {
+      const res = await documentService.getOfficeHealth();
+      setOfficeHealth({ enabled: !!res?.enabled, reason: res?.reason || null, loading: false });
+    } catch (err) {
+      setOfficeHealth({ enabled: false, reason: err?.message || 'unavailable', loading: false });
+    }
+  }, []);
+
+  useEffect(() => { checkOfficeHealth(); }, [checkOfficeHealth]);
+
+  const handleModeChange = (nextMode) => {
+    setGenerationMode(nextMode);
+    localStorage.setItem('generationMode', nextMode);
+    notify(
+      nextMode === 'rpa'
+        ? 'Канал генерации: РПА-бот (WinAppDriver)'
+        : 'Канал генерации: программно (POI/PDFBox)'
+    );
+  };
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -150,16 +196,23 @@ const SettingsPage = () => {
             {sessions.map((session) => {
               const sessionId = session.sessionId || session.id;
               const isCurrent = session.current === true || session.isCurrent === true;
-              const device = session.userAgent || session.device || 'Неизвестное устройство';
-              const ip = session.ipAddress || session.ip || '—';
+              const rawUa = session.userAgent || session.device || '';
+              const { browser, os } = parseUserAgent(rawUa);
+              const ip = session.ipAddress || session.ip || null;
               const when = formatDateTime(session.loginTime || session.createdAt || session.date);
               const location = session.location || null;
+              const secondaryParts = [
+                os,
+                ip ? `IP: ${ip}` : null,
+                when,
+                location,
+              ].filter(Boolean);
 
               return (
                 <React.Fragment key={sessionId}>
                   <ListItem
                     disableGutters
-                    sx={{ py: 1.5 }}
+                    sx={{ py: 1.5, pr: 12, alignItems: 'flex-start' }}
                     secondaryAction={
                       isCurrent ? (
                         <Chip label="Текущая" color="primary" size="small" />
@@ -177,14 +230,16 @@ const SettingsPage = () => {
                     }
                   >
                     <ListItemText
-                      primary={device}
-                      secondary={
-                        <>
-                          IP: {ip} · {when}
-                          {location ? ` · ${location}` : ''}
-                        </>
-                      }
-                      primaryTypographyProps={{ fontWeight: isCurrent ? 600 : 400, noWrap: true }}
+                      primary={browser}
+                      secondary={secondaryParts.join(' · ') || '—'}
+                      primaryTypographyProps={{
+                        fontWeight: isCurrent ? 600 : 500,
+                        noWrap: true,
+                      }}
+                      secondaryTypographyProps={{
+                        variant: 'caption',
+                        sx: { wordBreak: 'break-word' },
+                      }}
                     />
                   </ListItem>
                   <Divider component="li" />
@@ -192,6 +247,79 @@ const SettingsPage = () => {
               );
             })}
           </List>
+        )}
+      </Paper>
+
+      <Paper sx={{ p: 4, borderRadius: 4, mb: 3 }}>
+        <Stack direction="row" alignItems="center" spacing={1} mb={2}>
+          <SmartToyIcon color="primary" />
+          <Typography variant="h6" fontWeight={700}>
+            Канал генерации документов
+          </Typography>
+          {officeHealth.loading ? (
+            <Chip size="small" label="Проверка…" />
+          ) : officeHealth.enabled ? (
+            <Chip size="small" color="success" label="РПА-бот доступен" />
+          ) : (
+            <Chip size="small" color="default" label="РПА-бот недоступен" />
+          )}
+        </Stack>
+
+        <FormControl>
+          <FormLabel sx={{ mb: 1 }}>
+            Каким способом заполнять документы при операциях
+          </FormLabel>
+          <RadioGroup
+            value={generationMode}
+            onChange={(e) => handleModeChange(e.target.value)}
+          >
+            <FormControlLabel
+              value="auto"
+              control={<Radio />}
+              label={(
+                <Box>
+                  <Typography variant="body2" fontWeight={600}>
+                    Программно (Apache POI / PDFBox)
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Документ генерируется server-side из шаблона. Работает всегда, не требует Windows / Office.
+                  </Typography>
+                </Box>
+              )}
+            />
+            <FormControlLabel
+              value="rpa"
+              control={<Radio />}
+              disabled={!officeHealth.enabled}
+              label={(
+                <Box>
+                  <Typography variant="body2" fontWeight={600}>
+                    Роботом (RPA-2 через WinAppDriver)
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Бот реально открывает Excel / Word локально, заполняет ячейки и сохраняет файл.
+                    Требует Windows + MS Office + запущенный WinAppDriver на сервере.
+                  </Typography>
+                </Box>
+              )}
+            />
+          </RadioGroup>
+        </FormControl>
+
+        {!officeHealth.enabled && (
+          <Alert severity="info" sx={{ mt: 2, borderRadius: 1 }}>
+            РПА-бот сейчас выключен на сервере (флаг <code>rpa.office.enabled=false</code> или
+            WinAppDriver не запущен). Можно оставить выбор «Роботом» — при операциях
+            автоматически произойдёт fallback на программный канал с уведомлением.
+          </Alert>
+        )}
+
+        {generationMode === 'rpa' && officeHealth.enabled && (
+          <Alert severity="success" sx={{ mt: 2, borderRadius: 1 }}>
+            Все ваши операции отгрузки / приёмки / списания будут запускать РПА-бота.
+            Если конкретный шаблон ещё не подключён в RpaTemplateBinding — будет fallback на POI с
+            уведомлением.
+          </Alert>
         )}
       </Paper>
 

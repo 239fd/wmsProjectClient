@@ -127,44 +127,52 @@ const AppRouter = () => {
           </RoleGuard>
         } />
         <Route path="receive" element={
-          <RoleGuard allowed={['WORKER', 'DIRECTOR']}>
+          <RoleGuard allowed={['WORKER']}>
             <ReceivePage />
           </RoleGuard>
         } />
         <Route path="ship" element={
-          <RoleGuard allowed={['WORKER', 'DIRECTOR']}>
+          <RoleGuard allowed={['WORKER']}>
             <ShipPage />
           </RoleGuard>
         } />
-        <Route path="inventory" element={<InventoryPage />} />
+        <Route path="inventory" element={
+          <RoleGuard allowed={['ACCOUNTANT']}>
+            <InventoryPage />
+          </RoleGuard>
+        } />
         <Route path="writeoff" element={
-          <RoleGuard allowed={['ACCOUNTANT', 'DIRECTOR']}>
+          <RoleGuard allowed={['ACCOUNTANT']}>
             <WriteoffPage />
           </RoleGuard>
         } />
         <Route path="revaluation" element={
-          <RoleGuard allowed={['ACCOUNTANT', 'DIRECTOR']}>
+          <RoleGuard allowed={['ACCOUNTANT']}>
             <RevaluationPage />
           </RoleGuard>
         } />
         <Route path="analytics" element={
-          <RoleGuard allowed={['ACCOUNTANT', 'DIRECTOR']}>
+          <RoleGuard allowed={['DIRECTOR']}>
             <AnalyticsPage />
           </RoleGuard>
         } />
         <Route path="suppliers" element={
-          <RoleGuard allowed={['ACCOUNTANT', 'DIRECTOR']}>
+          <RoleGuard allowed={['WORKER']}>
             <SuppliersPage />
           </RoleGuard>
         } />
         <Route path="supplies" element={
-          <RoleGuard allowed={['WORKER', 'ACCOUNTANT', 'DIRECTOR']}>
+          <RoleGuard allowed={['WORKER']}>
             <SuppliesPage />
           </RoleGuard>
         } />
-        <Route path="documents" element={<DocumentsPage />} />
+        <Route path="documents" element={
+          <RoleGuard allowed={['WORKER', 'ACCOUNTANT']}>
+            <DocumentsPage />
+          </RoleGuard>
+        } />
         <Route path="erp-extractor" element={
-          <RoleGuard allowed={['DIRECTOR']}>
+          <RoleGuard allowed={['WORKER']}>
             <ErpExtractorPage />
           </RoleGuard>
         } />

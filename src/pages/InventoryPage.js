@@ -77,7 +77,7 @@ const InventoryPage = () => {
     setSessionLoading(true);
     try {
       const data = await productService.getInventorySession(sessionId);
-      if (data?.status === 'ACTIVE') {
+      if (data?.status === 'IN_PROGRESS' || data?.status === 'ACTIVE') {
         setSession(data);
       } else {
         localStorage.removeItem(ACTIVE_SESSION_KEY(userId));
@@ -215,9 +215,30 @@ const InventoryPage = () => {
               icon={PlayArrowIcon}
               title="Активной сессии нет"
               description="Начните сессию инвентаризации для одного из складов. Во время сессии вы будете записывать фактические остатки товаров; по завершении система сравнит их с учётными."
-              actionLabel="Начать сессию"
-              onAction={handleStartOpen}
             />
+            <Box sx={{ textAlign: 'center', pb: 4 }}>
+              <Tooltip
+                arrow
+                placement="bottom"
+                title={(
+                  <Box sx={{ p: 0.5, maxWidth: 360 }}>
+                    <Typography variant="caption" component="div" fontWeight={700} mb={0.5}>
+                      По НСБУ № 126 (Беларусь):
+                    </Typography>
+                    <Typography variant="caption" component="div">
+                      • не ранее <b>30 сентября</b> для активов;<br />
+                      • не ранее <b>30 ноября</b> для денежных средств;<br />
+                      • обязательна перед годовой отчётностью, при реорганизации,
+                      смене материально-ответственного лица, факте хищения.
+                    </Typography>
+                  </Box>
+                )}
+              >
+                <Button variant="contained" onClick={handleStartOpen}>
+                  Начать сессию
+                </Button>
+              </Tooltip>
+            </Box>
           </Paper>
         ) : (
           <Paper sx={{ borderRadius: 3, p: 4, mb: 3 }}>

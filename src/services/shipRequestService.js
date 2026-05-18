@@ -3,8 +3,10 @@ import httpService from './httpService';
 import { API_ENDPOINTS } from '../config/api';
 
 const shipRequestService = {
-  async list() {
-    return httpService.get(API_ENDPOINTS.OPERATIONS.SHIP_REQUESTS);
+  async list({ page = 0, size = 1000, sort } = {}) {
+    const params = { page, size };
+    if (sort) params.sort = sort;
+    return httpService.get(API_ENDPOINTS.OPERATIONS.SHIP_REQUESTS, { params });
   },
 
   async get(requestId) {
@@ -25,8 +27,8 @@ const shipRequestService = {
     return httpService.post(API_ENDPOINTS.OPERATIONS.SHIP_REQUEST_UNPICK(requestId), payload);
   },
 
-  async complete(requestId, body = {}) {
-    return httpService.post(API_ENDPOINTS.OPERATIONS.SHIP_REQUEST_COMPLETE(requestId), body);
+  async complete(requestId) {
+    return httpService.post(API_ENDPOINTS.OPERATIONS.SHIP_REQUEST_COMPLETE(requestId), {});
   },
 
   async cancel(requestId) {

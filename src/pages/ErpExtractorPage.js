@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Box, Typography, Paper, Stack, Button, IconButton, Chip, Grid,
+  Box, Typography, Paper, Stack, Button, Chip, Grid, TextField,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Tabs, Tab, CircularProgress, MenuItem, Select, InputLabel, FormControl
+  Tabs, Tab, CircularProgress, MenuItem, Select, InputLabel, FormControl,
+  Alert, Divider
 } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import CloudSyncIcon from '@mui/icons-material/CloudSync';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { selectUser } from '../store/slices/authSlice';
@@ -15,6 +17,41 @@ import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
 
 const formatDate = (iso) => iso ? new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+
+const AGGREGATORS = [
+  {
+    value: 'onec',
+    label: '1С (толстый клиент, WinAppDriver)',
+    description: 'Read-only парсинг журнала «Заказы поставщикам». Требует запущенный WinAppDriver на 127.0.0.1:4723 и открытое окно 1С.',
+    fields: ['username', 'password', 'basePath', 'sectionName', 'journalName'],
+    defaults: {
+      sectionName: 'Закупки',
+      journalName: 'Заказы поставщикам',
+    },
+  },
+  {
+    value: 'api',
+    label: 'Mock REST API (dev)',
+    description: 'Тестовая REST-заглушка mock-erp для разработки. Credentials и путь не требуются.',
+    fields: [],
+    defaults: {},
+  },
+  {
+    value: 'rpa',
+    label: 'Mock HTML scraping (dev)',
+    description: 'Тестовый Jsoup-скрапинг mock-erp. Credentials и путь не требуются.',
+    fields: [],
+    defaults: {},
+  },
+];
+
+const FIELD_META = {
+  username: { label: 'Пользователь 1С', placeholder: 'Например: Администратор (ФедоровБМ)', required: true },
+  password: { label: 'Пароль', placeholder: 'оставьте пустым, если без пароля', type: 'password', required: false },
+  basePath: { label: 'Путь к базе', placeholder: 'C:\\Users\\...\\utdemo  или  /F"srvr=...;ref=..."', required: true },
+  sectionName: { label: 'Раздел', placeholder: 'Закупки', required: true },
+  journalName: { label: 'Журнал', placeholder: 'Заказы поставщикам', required: true },
+};
 
 const ErpExtractorPage = () => {
   const navigate = useNavigate();
@@ -26,7 +63,12 @@ const ErpExtractorPage = () => {
   const [pending, setPending] = useState([]);
   const [log, setLog] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState('api');
+  const [step, setStep] = useState('select');
+  const [aggregator, setAggregator] = useState('onec');
+  const [creds, setCreds] = useState({
+    username: '', password: '', basePath: '',
+    sectionName: 'Закупки', journalName: 'Заказы поставщикам',
+  });
   const [running, setRunning] = useState(false);
 
   useEffect(() => {
@@ -53,18 +95,42 @@ const ErpExtractorPage = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleRun = async () => {
+  const handleStartFlow = () => {
+    const agg = AGGREGATORS.find((a) => a.value === aggregator);
+    if (!agg) return;
+    if (agg.fields.length === 0) {
+      runExtraction(null);
+      return;
+    }
+    setCreds((prev) => ({ ...prev, ...agg.defaults }));
+    setStep('credentials');
+  };
+
+  const runExtraction = async (connection) => {
     setRunning(true);
     try {
-      const res = await erpExtractorService.run(mode);
-      const items = res?.itemsExtracted ?? res?.itemCount ?? 0;
+      const res = await erpExtractorService.run(aggregator, connection);
+      const items = res?.itemsExtracted ?? res?.itemCount ?? res?.new ?? 0;
       notify(`Извлечение завершено · позиций: ${items}`);
+      setStep('select');
       await load();
     } catch (err) {
       notify(err.message || 'Не удалось запустить извлечение', 'error');
     } finally {
       setRunning(false);
     }
+  };
+
+  const handleSubmitCreds = () => {
+    const agg = AGGREGATORS.find((a) => a.value === aggregator);
+    const missing = agg.fields.filter((f) => FIELD_META[f].required && !String(creds[f] || '').trim());
+    if (missing.length > 0) {
+      notify(`Заполните обязательные поля: ${missing.map((f) => FIELD_META[f].label).join(', ')}`, 'warning');
+      return;
+    }
+    const connection = { aggregator };
+    agg.fields.forEach((f) => { connection[f] = creds[f] || null; });
+    runExtraction(connection);
   };
 
   if (!user || !orgId) return null;
@@ -79,41 +145,105 @@ const ErpExtractorPage = () => {
       <Box sx={{ width: '100%', maxWidth: 1440, mx: 'auto', px: { xs: 2, md: 3 } }}>
         <Typography variant="h4" fontWeight={700} mb={3}>ERP Extractor (RPA)</Typography>
 
-        <Paper sx={{ p: 3, mb: 3, borderRadius: 3 }}>
-          <Grid container spacing={2} alignItems="center">
-            <Grid size={{ xs: 12, md: 4 }}>
-              <FormControl fullWidth>
-                <InputLabel>Источник</InputLabel>
-                <Select
-                  value={mode}
-                  label="Источник"
-                  variant="outlined"
-                  onChange={(e) => setMode(e.target.value)}
-                  disabled={running}
-                >
-                  <MenuItem value="api">API (REST интеграция)</MenuItem>
-                  <MenuItem value="rpa">RPA (Jsoup HTML-скрапинг)</MenuItem>
-                </Select>
-              </FormControl>
+        {step === 'select' && (
+          <Paper sx={{ p: 3, mb: 3, borderRadius: 3 }}>
+            <Typography variant="h6" fontWeight={600} mb={2}>Выбор агрегатора (ERP)</Typography>
+            <Grid container spacing={2} alignItems="center">
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Агрегатор</InputLabel>
+                  <Select
+                    value={aggregator}
+                    label="Агрегатор"
+                    variant="outlined"
+                    onChange={(e) => setAggregator(e.target.value)}
+                    disabled={running}
+                  >
+                    {AGGREGATORS.map((a) => (
+                      <MenuItem key={a.value} value={a.value}>{a.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Stack direction="row" spacing={2}>
+                  <Button
+                    variant="contained"
+                    startIcon={<PlayArrowIcon />}
+                    onClick={handleStartFlow}
+                    disabled={running}
+                    size="large"
+                  >
+                    Далее
+                  </Button>
+                  <Button startIcon={<RefreshIcon />} onClick={load} disabled={loading || running}>
+                    Обновить
+                  </Button>
+                </Stack>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <Alert severity="info" sx={{ mt: 1 }}>
+                  {AGGREGATORS.find((a) => a.value === aggregator)?.description}
+                </Alert>
+              </Grid>
             </Grid>
-            <Grid size={{ xs: 12, md: 8 }}>
-              <Stack direction="row" spacing={2}>
-                <Button
-                  variant="contained"
-                  startIcon={running ? <CircularProgress size={18} color="inherit" /> : <PlayArrowIcon />}
-                  onClick={handleRun}
-                  disabled={running}
-                  size="large"
-                >
-                  {running ? 'Извлекаем...' : 'Запустить извлечение'}
-                </Button>
-                <Button startIcon={<RefreshIcon />} onClick={load} disabled={loading || running}>
-                  Обновить
-                </Button>
-              </Stack>
+          </Paper>
+        )}
+
+        {step === 'credentials' && (
+          <Paper sx={{ p: 3, mb: 3, borderRadius: 3 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
+              <Typography variant="h6" fontWeight={600}>
+                Параметры подключения · {AGGREGATORS.find((a) => a.value === aggregator)?.label}
+              </Typography>
+              <Button
+                startIcon={<ArrowBackIcon />}
+                onClick={() => setStep('select')}
+                disabled={running}
+              >
+                К выбору
+              </Button>
+            </Stack>
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Сейчас параметры читаются из <code>rpa.properties</code> на бэке — поля формы передаются, но
+              бэкенд их пока игнорирует. См. PLAN.md §2.7 (backend backlog).
+            </Alert>
+            <Divider sx={{ mb: 2 }} />
+            <Grid container spacing={2}>
+              {AGGREGATORS.find((a) => a.value === aggregator)?.fields.map((f) => {
+                const meta = FIELD_META[f];
+                return (
+                  <Grid key={f} size={{ xs: 12, md: 6 }}>
+                    <TextField
+                      fullWidth
+                      label={meta.label + (meta.required ? ' *' : '')}
+                      placeholder={meta.placeholder}
+                      type={meta.type || 'text'}
+                      value={creds[f] || ''}
+                      onChange={(e) => setCreds((prev) => ({ ...prev, [f]: e.target.value }))}
+                      disabled={running}
+                      size="small"
+                    />
+                  </Grid>
+                );
+              })}
             </Grid>
-          </Grid>
-        </Paper>
+            <Stack direction="row" spacing={2} mt={3}>
+              <Button
+                variant="contained"
+                startIcon={running ? <CircularProgress size={18} color="inherit" /> : <PlayArrowIcon />}
+                onClick={handleSubmitCreds}
+                disabled={running}
+                size="large"
+              >
+                {running ? 'Извлекаем…' : 'Запустить извлечение'}
+              </Button>
+              <Button onClick={() => setStep('select')} disabled={running}>
+                Отмена
+              </Button>
+            </Stack>
+          </Paper>
+        )}
 
         <Paper sx={{ borderRadius: 3 }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>

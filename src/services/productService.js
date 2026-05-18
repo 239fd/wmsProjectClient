@@ -39,9 +39,28 @@ const productService = {
   },
 
 
-  async receiveProduct(receiveData) {
+  async createReceiptSession(payload) {
+    return httpService.post(API_ENDPOINTS.RECEIPT_SESSIONS.BASE, payload);
+  },
 
-    return httpService.post(API_ENDPOINTS.OPERATIONS.RECEIVE, receiveData);
+  async completeReceiptSession(sessionId) {
+    return httpService.post(API_ENDPOINTS.RECEIPT_SESSIONS.COMPLETE(sessionId), {});
+  },
+
+  async recordSessionDiscrepancy(sessionId, payload) {
+    return httpService.post(API_ENDPOINTS.RECEIPT_SESSIONS.DISCREPANCY(sessionId), payload);
+  },
+
+  async listReceiptSessions(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const url = qs
+      ? `${API_ENDPOINTS.RECEIPT_SESSIONS.BASE}?${qs}`
+      : API_ENDPOINTS.RECEIPT_SESSIONS.BASE;
+    return httpService.get(url);
+  },
+
+  async getReceiptSession(sessionId) {
+    return httpService.get(API_ENDPOINTS.RECEIPT_SESSIONS.BY_ID(sessionId));
   },
 
   async transferProduct(transferData) {
