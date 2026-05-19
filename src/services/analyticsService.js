@@ -42,6 +42,15 @@ const analyticsService = {
   async getEmployeesAnalytics(orgId) {
     return httpService.get(API_ENDPOINTS.ANALYTICS.EMPLOYEES_BY_ORG(orgId));
   },
+
+  async getAbcDistribution() {
+    return httpService.get(API_ENDPOINTS.ANALYTICS.ABC_DISTRIBUTION);
+  },
+
+  async getExpiringProducts(withinDays = 30) {
+    const url = `${API_ENDPOINTS.ANALYTICS.EXPIRING_PRODUCTS}?withinDays=${withinDays}`;
+    return httpService.get(url);
+  },
 };
 
 export default analyticsService;

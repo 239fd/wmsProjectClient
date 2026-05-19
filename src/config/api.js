@@ -129,6 +129,8 @@ export const API_ENDPOINTS = {
     OPERATIONS_COMPARE: `${API_BASE_URL}/api/analytics/operations/compare`,
     INVENTORY_COMPARE: `${API_BASE_URL}/api/analytics/inventory/compare`,
     OPERATIONS_SUMMARY: `${API_BASE_URL}/api/analytics/operations/summary`,
+    ABC_DISTRIBUTION: `${API_BASE_URL}/api/analytics/abc-distribution`,
+    EXPIRING_PRODUCTS: `${API_BASE_URL}/api/analytics/expiring-products`,
     WAREHOUSES_ALL: `${API_BASE_URL}/api/warehouses/analytics`,
     WAREHOUSE_BY_ID: (warehouseId) => `${API_BASE_URL}/api/warehouses/analytics/${warehouseId}`,
     WAREHOUSES_ORG_SUMMARY: (orgId) => `${API_BASE_URL}/api/warehouses/analytics/organization/${orgId}/summary`,
@@ -141,6 +143,7 @@ export const API_ENDPOINTS = {
     METADATA: (id) => `${API_BASE_URL}/api/documents/${id}/metadata`,
     GENERATE: (type) => `${API_BASE_URL}/api/documents/${type}`,
     STUB_INFO: `${API_BASE_URL}/api/documents/stub-info`,
+    RPA_HEALTH: `${API_BASE_URL}/api/documents/rpa/health`,
   },
 
   DOCUMENT_REGISTRY: {
@@ -149,10 +152,6 @@ export const API_ENDPOINTS = {
     DOWNLOAD: (id) => `${API_BASE_URL}/api/document-registry/${id}/download`,
     PRESIGNED_URL: (id) => `${API_BASE_URL}/api/document-registry/${id}/url`,
     BY_OPERATION: (operationId) => `${API_BASE_URL}/api/document-registry/by-operation/${operationId}`,
-  },
-
-  OFFICE_RPA: {
-    HEALTH: `${API_BASE_URL}/api/documents/office/health`,
   },
 
   ERP_EXTRACTOR: {

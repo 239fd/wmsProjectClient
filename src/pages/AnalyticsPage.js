@@ -15,6 +15,9 @@ import {
   Warehouse as WarehouseIcon,
   History as HistoryIcon,
   Refresh as RefreshIcon,
+  Schedule as ScheduleIcon,
+  WarningAmber as WarningAmberIcon,
+  EmojiEvents as EmojiEventsIcon,
 } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import { selectUser } from '../store/slices/authSlice';
@@ -138,6 +141,7 @@ const AnalyticsPage = () => {
   const [warehousesSummary, setWarehousesSummary] = useState(null);
   const [opsComparison, setOpsComparison] = useState(null);
   const [invComparison, setInvComparison] = useState(null);
+  const [abcDistribution, setAbcDistribution] = useState(null);
   const [overviewLoading, setOverviewLoading] = useState(true);
 
   const dateRange = useMemo(() => {
@@ -155,13 +159,14 @@ const AnalyticsPage = () => {
       analyticsService.getOperationsDynamics(dateRange.startDate, dateRange.endDate).catch((e) => ({ __err: e.message })),
       analyticsService.getOperationsComparison(dateRange.startDate, dateRange.endDate).catch((e) => ({ __err: e.message })),
       analyticsService.getInventoryComparison(dateRange.startDate, dateRange.endDate).catch((e) => ({ __err: e.message })),
+      analyticsService.getAbcDistribution().catch((e) => ({ __err: e.message })),
     ];
     if (orgId) {
       tasks.push(analyticsService.getWarehousesOrgSummary(orgId).catch((e) => ({ __err: e.message })));
     } else {
       tasks.push(Promise.resolve(null));
     }
-    const [inv, ops, opsCmp, invCmp, whs] = await Promise.all(tasks);
+    const [inv, ops, opsCmp, invCmp, abc, whs] = await Promise.all(tasks);
 
     if (inv && !inv.__err) setInventory(inv);
     else if (inv?.__err) notify(`Аналитика остатков: ${inv.__err}`, 'error');
@@ -174,6 +179,9 @@ const AnalyticsPage = () => {
 
     if (invCmp && !invCmp.__err) setInvComparison(invCmp);
     else setInvComparison(null);
+
+    if (abc && !abc.__err) setAbcDistribution(abc);
+    else setAbcDistribution(null);
 
     if (whs && !whs.__err) setWarehousesSummary(whs);
 
@@ -209,7 +217,7 @@ const AnalyticsPage = () => {
 
         {}
         <Grid container spacing={3} mb={3}>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
             <KPICard
               icon={InventoryIcon}
               label="Всего на складах"
@@ -219,16 +227,17 @@ const AnalyticsPage = () => {
               trend={invComparison?.totalQuantityTrendPercent}
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
             <KPICard
               icon={TrendingUpIcon}
               label="Уникальных позиций"
               value={inventory?.uniqueProducts}
               color="#2e7d32"
               loading={overviewLoading}
+              trend={invComparison?.uniqueProductsTrendPercent}
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
             <KPICard
               icon={ReceiptIcon}
               label={`Операции · ${PERIODS.find((p) => p.value === period)?.label.toLowerCase()}`}
@@ -238,7 +247,7 @@ const AnalyticsPage = () => {
               trend={opsComparison?.deltaPercent}
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
             <KPICard
               icon={StorefrontIcon}
               label="Доступно"
@@ -246,6 +255,16 @@ const AnalyticsPage = () => {
               color="#9c27b0"
               loading={overviewLoading}
               trend={invComparison?.availableQuantityTrendPercent}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
+            <KPICard
+              icon={HistoryIcon}
+              label="Зарезервировано"
+              value={inventory?.reservedQuantity}
+              color="#d32f2f"
+              loading={overviewLoading}
+              trend={invComparison?.reservedQuantityTrendPercent}
             />
           </Grid>
         </Grid>
@@ -260,6 +279,8 @@ const AnalyticsPage = () => {
             <Tab label="Обзор" />
             <Tab label="Операции" />
             <Tab label="Сотрудники" />
+            <Tab label="Склады" />
+            <Tab label="Запасы" />
           </Tabs>
 
           {tab === 0 && (
@@ -267,6 +288,7 @@ const AnalyticsPage = () => {
               loading={overviewLoading}
               warehousesSummary={warehousesSummary}
               opsDynamics={opsDynamics}
+              abcDistribution={abcDistribution}
               periodLabel={PERIODS.find((p) => p.value === period)?.label}
             />
           )}
@@ -274,7 +296,13 @@ const AnalyticsPage = () => {
             <OperationsTab dateRange={dateRange} />
           )}
           {tab === 2 && (
-            <EmployeesTab orgId={orgId} />
+            <EmployeesTab orgId={orgId} opsDynamics={opsDynamics} />
+          )}
+          {tab === 3 && (
+            <WarehousesTab warehousesSummary={warehousesSummary} loading={overviewLoading} />
+          )}
+          {tab === 4 && (
+            <ExpiringProductsTab />
           )}
         </Paper>
       </Box>
@@ -282,7 +310,86 @@ const AnalyticsPage = () => {
   );
 };
 
-const OverviewTab = ({ loading, warehousesSummary, opsDynamics, periodLabel }) => {
+const ABC_COLORS = { A: '#2e7d32', B: '#ed6c02', C: '#9e9e9e' };
+
+const AbcDonutCard = ({ data, loading }) => {
+  const counts = data?.productCountByClass || {};
+  const qty = data?.quantityByClass || {};
+  const totalProducts = Number(data?.totalProducts || 0);
+  const segments = useMemo(() => {
+    if (!totalProducts) return [];
+    let offset = 0;
+    return ['A', 'B', 'C'].map((cls) => {
+      const c = Number(counts[cls] || 0);
+      const pct = totalProducts > 0 ? c / totalProducts : 0;
+      const seg = { cls, count: c, pct, offset, dashLen: pct * 100, color: ABC_COLORS[cls] };
+      offset += pct * 100;
+      return seg;
+    });
+  }, [counts, totalProducts]);
+
+  return (
+    <Paper variant="outlined" sx={{ p: 3, borderRadius: 3, height: '100%' }}>
+      <Typography variant="subtitle1" fontWeight={700} mb={2}>ABC-распределение товаров</Typography>
+      {loading ? (
+        <Skeleton variant="circular" width={160} height={160} sx={{ mx: 'auto' }} />
+      ) : totalProducts === 0 ? (
+        <EmptyState title="Нет данных для ABC" sx={{ py: 4 }} />
+      ) : (
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems="center">
+          <Box sx={{ position: 'relative', width: 160, height: 160, flexShrink: 0 }}>
+            <svg viewBox="0 0 36 36" width="100%" height="100%">
+              <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#f0f0f0" strokeWidth="3.5" />
+              {segments.map((s) => (
+                <circle
+                  key={s.cls}
+                  cx="18"
+                  cy="18"
+                  r="15.9155"
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth="3.5"
+                  strokeDasharray={`${s.dashLen} ${100 - s.dashLen}`}
+                  strokeDashoffset={-s.offset}
+                  transform="rotate(-90 18 18)"
+                />
+              ))}
+            </svg>
+            <Box sx={{
+              position: 'absolute', inset: 0, display: 'flex',
+              flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Typography variant="h5" fontWeight={700}>{totalProducts}</Typography>
+              <Typography variant="caption" color="text.secondary">позиций</Typography>
+            </Box>
+          </Box>
+          <Stack spacing={1.5} sx={{ flex: 1, width: '100%' }}>
+            {segments.map((s) => (
+              <Box key={s.cls}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={0.5}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Box sx={{ width: 12, height: 12, bgcolor: s.color, borderRadius: 0.5 }} />
+                    <Typography variant="body2" fontWeight={600}>
+                      Категория {s.cls}
+                    </Typography>
+                  </Stack>
+                  <Typography variant="body2" fontWeight={700}>
+                    {s.count} ({Math.round(s.pct * 100)}%)
+                  </Typography>
+                </Stack>
+                <Typography variant="caption" color="text.secondary">
+                  Остаток: {Number(qty[s.cls] || 0).toLocaleString('ru-RU')}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+        </Stack>
+      )}
+    </Paper>
+  );
+};
+
+const OverviewTab = ({ loading, warehousesSummary, opsDynamics, abcDistribution, periodLabel }) => {
 
   const warehousesList = useMemo(() => {
     if (!warehousesSummary) return null;
@@ -320,64 +427,67 @@ const OverviewTab = ({ loading, warehousesSummary, opsDynamics, periodLabel }) =
   return (
     <Box sx={{ p: 3 }}>
       {}
-      <Typography variant="h6" fontWeight={600} mb={2}>Эффективность складов</Typography>
-      {loading ? (
-        <Grid container spacing={2} mb={4}>
-          {[0, 1, 2].map((i) => (
-            <Grid size={{ xs: 12, md: 4 }} key={i}>
-              <Skeleton variant="rounded" height={140} />
+      <Grid container spacing={3} mb={4}>
+        <Grid size={{ xs: 12, md: 7 }}>
+          <Typography variant="h6" fontWeight={600} mb={2}>Эффективность складов</Typography>
+          {loading ? (
+            <Grid container spacing={2}>
+              {[0, 1, 2].map((i) => (
+                <Grid size={{ xs: 12, sm: 6 }} key={i}>
+                  <Skeleton variant="rounded" height={140} />
+                </Grid>
+              ))}
             </Grid>
-          ))}
-        </Grid>
-      ) : !warehousesList || warehousesList.length === 0 ? (
-        <Box mb={4}>
-          <EmptyState title="Нет данных о складах" sx={{ py: 4 }} />
-        </Box>
-      ) : (
-        <Grid container spacing={2} mb={4}>
-          {warehousesList.map((w, i) => {
-            const fill = Number(w.fillPercentage ?? w.utilization ?? 0);
-            return (
-              <Grid size={{ xs: 12, md: 4 }} key={w.warehouseId || w.id || i}>
-                <Card variant="outlined" sx={{ borderRadius: 3 }}>
-                  <CardContent>
-                    <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
-                      <Box sx={{ bgcolor: '#e3f2fd', color: '#1976d2', p: 1, borderRadius: 2, display: 'inline-flex' }}>
-                        <WarehouseIcon />
-                      </Box>
-                      <Typography variant="subtitle1" fontWeight={700} noWrap>
-                        {w.name || '—'}
-                      </Typography>
-                    </Stack>
-                    <Stack spacing={1}>
-                      <Stack direction="row" justifyContent="space-between">
-                        <Typography variant="body2" color="text.secondary">Уникальных товаров</Typography>
-                        <Typography variant="body2" fontWeight={600}>{w.uniqueProducts ?? '—'}</Typography>
-                      </Stack>
-                      <Stack direction="row" justifyContent="space-between">
-                        <Typography variant="body2" color="text.secondary">Объём</Typography>
-                        <Typography variant="body2" fontWeight={600}>{w.totalQuantity ?? '—'}</Typography>
-                      </Stack>
-                      <Box>
-                        <Stack direction="row" justifyContent="space-between" mb={0.5}>
-                          <Typography variant="body2" color="text.secondary">Заполненность</Typography>
-                          <Typography variant="body2" fontWeight={700}>{fill}%</Typography>
+          ) : !warehousesList || warehousesList.length === 0 ? (
+            <EmptyState title="Нет данных о складах" sx={{ py: 4 }} />
+          ) : (
+            <Grid container spacing={2}>
+              {warehousesList.map((w, i) => {
+                const fill = Number(w.fillPercentage ?? w.utilization ?? 0);
+                return (
+                  <Grid size={{ xs: 12, sm: 6 }} key={w.warehouseId || w.id || i}>
+                    <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                      <CardContent>
+                        <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
+                          <Box sx={{ bgcolor: '#e3f2fd', color: '#1976d2', p: 1, borderRadius: 2, display: 'inline-flex' }}>
+                            <WarehouseIcon />
+                          </Box>
+                          <Typography variant="subtitle1" fontWeight={700} noWrap>{w.name || '—'}</Typography>
                         </Stack>
-                        <LinearProgress
-                          variant="determinate"
-                          value={Math.min(fill, 100)}
-                          sx={{ height: 8, borderRadius: 1 }}
-                          color={fill > 90 ? 'error' : fill > 70 ? 'warning' : 'primary'}
-                        />
-                      </Box>
-                    </Stack>
-                  </CardContent>
-                </Card>
-              </Grid>
-            );
-          })}
+                        <Stack spacing={1}>
+                          <Stack direction="row" justifyContent="space-between">
+                            <Typography variant="body2" color="text.secondary">Уникальных товаров</Typography>
+                            <Typography variant="body2" fontWeight={600}>{w.uniqueProducts ?? '—'}</Typography>
+                          </Stack>
+                          <Stack direction="row" justifyContent="space-between">
+                            <Typography variant="body2" color="text.secondary">Объём</Typography>
+                            <Typography variant="body2" fontWeight={600}>{w.totalQuantity ?? '—'}</Typography>
+                          </Stack>
+                          <Box>
+                            <Stack direction="row" justifyContent="space-between" mb={0.5}>
+                              <Typography variant="body2" color="text.secondary">Заполненность</Typography>
+                              <Typography variant="body2" fontWeight={700}>{fill}%</Typography>
+                            </Stack>
+                            <LinearProgress
+                              variant="determinate"
+                              value={Math.min(fill, 100)}
+                              sx={{ height: 8, borderRadius: 1 }}
+                              color={fill > 90 ? 'error' : fill > 70 ? 'warning' : 'primary'}
+                            />
+                          </Box>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                );
+              })}
+            </Grid>
+          )}
         </Grid>
-      )}
+        <Grid size={{ xs: 12, md: 5 }}>
+          <AbcDonutCard data={abcDistribution} loading={loading} />
+        </Grid>
+      </Grid>
 
       <Grid container spacing={3}>
         {}
@@ -620,7 +730,7 @@ const OperationsTab = ({ dateRange }) => {
   );
 };
 
-const EmployeesTab = ({ orgId }) => {
+const EmployeesTab = ({ orgId, opsDynamics }) => {
   const user = useSelector(selectUser);
   const isDirector = user?.role === 'DIRECTOR';
   const { data: employees } = useEmployees();
@@ -628,6 +738,21 @@ const EmployeesTab = ({ orgId }) => {
 
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const topActive = useMemo(() => {
+    const byUser = opsDynamics?.operationsByUser;
+    if (!byUser || typeof byUser !== 'object') return [];
+    return Object.entries(byUser)
+      .map(([uid, count]) => ({ userId: uid, count: Number(count || 0) }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [opsDynamics]);
+
+  const empByUserId = useMemo(() => {
+    const m = new Map();
+    employees.forEach((e) => m.set(e.userId, e));
+    return m;
+  }, [employees]);
 
   const load = useCallback(async () => {
     if (!orgId || !isDirector) {
@@ -681,6 +806,61 @@ const EmployeesTab = ({ orgId }) => {
         </Button>
       </Stack>
 
+      {topActive.length > 0 && (
+        <Paper variant="outlined" sx={{ p: 3, borderRadius: 3, mb: 3 }}>
+          <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
+            <Box sx={{ bgcolor: '#fff3e0', color: '#ed6c02', p: 1, borderRadius: 2, display: 'inline-flex' }}>
+              <EmojiEventsIcon />
+            </Box>
+            <Typography variant="subtitle1" fontWeight={700}>
+              Топ-5 активных за период
+            </Typography>
+          </Stack>
+          <Stack spacing={1.5}>
+            {topActive.map((u, idx) => {
+              const emp = empByUserId.get(u.userId);
+              const max = topActive[0]?.count || 1;
+              const pct = (u.count / max) * 100;
+              return (
+                <Box key={u.userId}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" mb={0.5}>
+                    <Stack direction="row" alignItems="center" spacing={1.5}>
+                      <Box sx={{
+                        bgcolor: idx === 0 ? '#fff3e0' : '#f5f5f5',
+                        color: idx === 0 ? '#ed6c02' : '#616161',
+                        width: 24, height: 24, borderRadius: '50%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontWeight: 700, fontSize: 13,
+                      }}>{idx + 1}</Box>
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>
+                          {emp?.fullName || emp?.username || (u.userId ? String(u.userId).slice(0, 8) + '…' : '—')}
+                        </Typography>
+                        {emp?.role && (
+                          <Typography variant="caption" color="text.secondary">
+                            {ROLE_LABEL[emp.role] || emp.role}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Stack>
+                    <Typography variant="body2" fontWeight={700}>
+                      {u.count} оп.
+                    </Typography>
+                  </Stack>
+                  <Box sx={{ height: 6, bgcolor: '#f0f0f0', borderRadius: 1, overflow: 'hidden' }}>
+                    <Box sx={{
+                      width: `${pct}%`, height: '100%',
+                      bgcolor: idx === 0 ? '#ed6c02' : '#1976d2',
+                      transition: 'width 0.5s ease',
+                    }} />
+                  </Box>
+                </Box>
+              );
+            })}
+          </Stack>
+        </Paper>
+      )}
+
       {loading ? (
         <Stack spacing={1}>
           {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} height={48} />)}
@@ -715,6 +895,245 @@ const EmployeesTab = ({ orgId }) => {
                     </TableCell>
                     <TableCell align="right">
                       {a.daysWorked != null ? `${a.daysWorked} дн.` : '—'}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Box>
+  );
+};
+
+const WarehousesTab = ({ warehousesSummary, loading }) => {
+  const warehousesList = useMemo(() => {
+    if (!warehousesSummary) return null;
+    if (Array.isArray(warehousesSummary)) return warehousesSummary;
+    if (Array.isArray(warehousesSummary.warehouses)) return warehousesSummary.warehouses;
+    return null;
+  }, [warehousesSummary]);
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h6" fontWeight={600} mb={2}>Детализация по складам</Typography>
+      {loading ? (
+        <Grid container spacing={2}>
+          {[0, 1, 2, 3].map((i) => (
+            <Grid size={{ xs: 12, md: 6 }} key={i}>
+              <Skeleton variant="rounded" height={220} />
+            </Grid>
+          ))}
+        </Grid>
+      ) : !warehousesList || warehousesList.length === 0 ? (
+        <EmptyState icon={WarehouseIcon} title="Нет складов" />
+      ) : (
+        <Grid container spacing={2}>
+          {warehousesList.map((w, i) => {
+            const fill = Number(w.fillPercentage ?? w.utilization ?? 0);
+            const id = w.warehouseId || w.id || i;
+            return (
+              <Grid size={{ xs: 12, md: 6 }} key={id}>
+                <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                  <CardContent>
+                    <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
+                      <Box sx={{ bgcolor: '#e3f2fd', color: '#1976d2', p: 1, borderRadius: 2, display: 'inline-flex' }}>
+                        <WarehouseIcon />
+                      </Box>
+                      <Stack flex={1} minWidth={0}>
+                        <Typography variant="subtitle1" fontWeight={700} noWrap>{w.name || '—'}</Typography>
+                        {w.address && (
+                          <Typography variant="caption" color="text.secondary" noWrap>{w.address}</Typography>
+                        )}
+                      </Stack>
+                      <Chip
+                        label={`${fill}%`}
+                        size="small"
+                        color={fill > 90 ? 'error' : fill > 70 ? 'warning' : 'success'}
+                        sx={{ fontWeight: 700 }}
+                      />
+                    </Stack>
+                    <Box mb={2}>
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.min(fill, 100)}
+                        sx={{ height: 10, borderRadius: 1 }}
+                        color={fill > 90 ? 'error' : fill > 70 ? 'warning' : 'primary'}
+                      />
+                    </Box>
+                    <Grid container spacing={1.5}>
+                      <Grid size={{ xs: 6 }}>
+                        <Typography variant="caption" color="text.secondary">Уникальных товаров</Typography>
+                        <Typography variant="body2" fontWeight={700}>{w.uniqueProducts ?? '—'}</Typography>
+                      </Grid>
+                      <Grid size={{ xs: 6 }}>
+                        <Typography variant="caption" color="text.secondary">Общий объём</Typography>
+                        <Typography variant="body2" fontWeight={700}>{w.totalQuantity ?? '—'}</Typography>
+                      </Grid>
+                      <Grid size={{ xs: 6 }}>
+                        <Typography variant="caption" color="text.secondary">Занято ячеек</Typography>
+                        <Typography variant="body2" fontWeight={700}>
+                          {w.occupiedCells ?? w.usedCells ?? '—'}
+                          {w.totalCells != null && ` / ${w.totalCells}`}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 6 }}>
+                        <Typography variant="caption" color="text.secondary">Операций · месяц</Typography>
+                        <Typography variant="body2" fontWeight={700}>{w.monthlyOperations ?? w.operationsLast30Days ?? '—'}</Typography>
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+              </Grid>
+            );
+          })}
+        </Grid>
+      )}
+    </Box>
+  );
+};
+
+const URGENCY_META = {
+  EXPIRED: { label: 'Просрочено', color: '#d32f2f', bg: '#ffebee' },
+  CRITICAL: { label: '≤ 7 дней', color: '#ed6c02', bg: '#fff3e0' },
+  WARNING: { label: '≤ 14 дней', color: '#f9a825', bg: '#fffde7' },
+  INFO: { label: '> 14 дней', color: '#1976d2', bg: '#e3f2fd' },
+};
+
+const ExpiringProductsTab = () => {
+  const { notify } = useSnackbar();
+  const [withinDays, setWithinDays] = useState(30);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const arr = await analyticsService.getExpiringProducts(withinDays);
+      setData(Array.isArray(arr) ? arr : []);
+    } catch (err) {
+      notify(err.message || 'Не удалось загрузить список товаров с истекающим сроком', 'error');
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [withinDays, notify]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const stats = useMemo(() => {
+    const s = { EXPIRED: 0, CRITICAL: 0, WARNING: 0, INFO: 0 };
+    (data || []).forEach((r) => { s[r.urgency] = (s[r.urgency] || 0) + 1; });
+    return s;
+  }, [data]);
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" useFlexGap>
+        <Stack direction="row" alignItems="center" spacing={1.5}>
+          <Box sx={{ bgcolor: '#ffebee', color: '#d32f2f', p: 1, borderRadius: 2, display: 'inline-flex' }}>
+            <ScheduleIcon />
+          </Box>
+          <Typography variant="h6" fontWeight={600}>Товары с истекающим сроком (FEFO-риски)</Typography>
+        </Stack>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <TextField
+            label="Окно (дней)"
+            size="small"
+            type="number"
+            value={withinDays}
+            onChange={(e) => setWithinDays(Math.max(0, Math.min(3650, Number(e.target.value) || 0)))}
+            sx={{ width: 130 }}
+            inputProps={{ min: 0, max: 3650 }}
+          />
+          <Button startIcon={<RefreshIcon />} onClick={load} disabled={loading}>
+            Обновить
+          </Button>
+        </Stack>
+      </Stack>
+
+      <Grid container spacing={2} mb={3}>
+        {['EXPIRED', 'CRITICAL', 'WARNING', 'INFO'].map((key) => {
+          const m = URGENCY_META[key];
+          return (
+            <Grid size={{ xs: 6, md: 3 }} key={key}>
+              <Card variant="outlined" sx={{ borderRadius: 3, bgcolor: m.bg }}>
+                <CardContent>
+                  <Typography variant="caption" sx={{ color: m.color, fontWeight: 700, textTransform: 'uppercase' }}>
+                    {m.label}
+                  </Typography>
+                  <Typography variant="h4" fontWeight={700} sx={{ color: m.color }}>
+                    {loading ? '…' : stats[key]}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
+      </Grid>
+
+      {loading ? (
+        <Stack spacing={1}>
+          {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} height={40} />)}
+        </Stack>
+      ) : !data || data.length === 0 ? (
+        <EmptyState
+          icon={WarningAmberIcon}
+          title="Нет товаров с истекающим сроком в указанном окне"
+          description="Увеличьте «окно дней» или дождитесь поступлений с короткими сроками"
+        />
+      ) : (
+        <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 600 }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell>Срочность</TableCell>
+                <TableCell>Товар</TableCell>
+                <TableCell>SKU</TableCell>
+                <TableCell>Партия</TableCell>
+                <TableCell>Срок годности</TableCell>
+                <TableCell align="right">Дней осталось</TableCell>
+                <TableCell align="right">Остаток</TableCell>
+                <TableCell>Условия хранения</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.map((r, i) => {
+                const meta = URGENCY_META[r.urgency] || URGENCY_META.INFO;
+                return (
+                  <TableRow key={r.batchId || i} hover>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={meta.label}
+                        sx={{ bgcolor: meta.bg, color: meta.color, fontWeight: 700 }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={600}>{r.productName || '—'}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                        {r.sku || '—'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>{r.batchNumber || '—'}</TableCell>
+                    <TableCell>
+                      {r.expiryDate
+                        ? new Date(r.expiryDate).toLocaleDateString('ru-RU')
+                        : '—'}
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: meta.color, fontWeight: 700 }}>
+                      {r.daysLeft != null ? r.daysLeft : '—'}
+                    </TableCell>
+                    <TableCell align="right">
+                      {r.quantity != null ? Number(r.quantity).toLocaleString('ru-RU') : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {r.storageConditions ? (
+                        <Chip size="small" variant="outlined" label={r.storageConditions} />
+                      ) : '—'}
                     </TableCell>
                   </TableRow>
                 );

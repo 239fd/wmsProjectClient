@@ -352,7 +352,8 @@ const InventoryPage = () => {
                         type="number"
                         size="small"
                         fullWidth
-                        inputProps={{ step: '0.01', min: '0' }}
+                        inputProps={{ step: 'any', min: '0' }}
+                        placeholder="например 12.5"
                         {...recordForm.register('actualQuantity')}
                         error={!!recordForm.formState.errors.actualQuantity}
                         helperText={recordForm.formState.errors.actualQuantity?.message}
