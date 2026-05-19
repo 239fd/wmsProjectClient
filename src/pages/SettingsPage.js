@@ -60,27 +60,31 @@ const SettingsPage = () => {
   const [generationMode, setGenerationMode] = useState(
     () => localStorage.getItem('generationMode') || 'auto'
   );
-  const [officeHealth, setOfficeHealth] = useState({ enabled: null, reason: null, loading: true });
+  const [rpaHealth, setRpaHealth] = useState({ enabled: null, reason: null, loading: true });
 
-  const checkOfficeHealth = useCallback(async () => {
-    setOfficeHealth((prev) => ({ ...prev, loading: true }));
+  const checkRpaHealth = useCallback(async () => {
+    setRpaHealth((prev) => ({ ...prev, loading: true }));
     try {
-      const res = await documentService.getOfficeHealth();
-      setOfficeHealth({ enabled: !!res?.enabled, reason: res?.reason || null, loading: false });
+      const res = await documentService.getRpaHealth();
+      setRpaHealth({ enabled: !!res?.enabled, reason: res?.reason || null, loading: false });
     } catch (err) {
-      setOfficeHealth({ enabled: false, reason: err?.message || 'unavailable', loading: false });
+      setRpaHealth({
+        enabled: false,
+        reason: 'Не удалось связаться с сервисом документов.',
+        loading: false,
+      });
     }
   }, []);
 
-  useEffect(() => { checkOfficeHealth(); }, [checkOfficeHealth]);
+  useEffect(() => { checkRpaHealth(); }, [checkRpaHealth]);
 
   const handleModeChange = (nextMode) => {
     setGenerationMode(nextMode);
     localStorage.setItem('generationMode', nextMode);
     notify(
       nextMode === 'rpa'
-        ? 'Канал генерации: РПА-бот (WinAppDriver)'
-        : 'Канал генерации: программно (POI/PDFBox)'
+        ? 'Канал генерации: 1С / Office (Python rpa-service)'
+        : 'Канал генерации: программно (Apache POI / PDFBox)'
     );
   };
 
@@ -256,12 +260,12 @@ const SettingsPage = () => {
           <Typography variant="h6" fontWeight={700}>
             Канал генерации документов
           </Typography>
-          {officeHealth.loading ? (
+          {rpaHealth.loading ? (
             <Chip size="small" label="Проверка…" />
-          ) : officeHealth.enabled ? (
-            <Chip size="small" color="success" label="РПА-бот доступен" />
+          ) : rpaHealth.enabled ? (
+            <Chip size="small" color="success" label="1С / Office доступен" />
           ) : (
-            <Chip size="small" color="default" label="РПА-бот недоступен" />
+            <Chip size="small" color="default" label="1С / Office недоступен" />
           )}
         </Stack>
 
@@ -290,15 +294,16 @@ const SettingsPage = () => {
             <FormControlLabel
               value="rpa"
               control={<Radio />}
-              disabled={!officeHealth.enabled}
+              disabled={!rpaHealth.enabled}
               label={(
                 <Box>
                   <Typography variant="body2" fontWeight={600}>
-                    Роботом (RPA-2 через WinAppDriver)
+                    1С / Office (Python rpa-service)
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Бот реально открывает Excel / Word локально, заполняет ячейки и сохраняет файл.
-                    Требует Windows + MS Office + запущенный WinAppDriver на сервере.
+                    Документ заполняется внешним сервисом, который реально открывает Excel / Word
+                    локально через COM-автоматизацию. Требует запущенный Python rpa-service на
+                    Windows-хосте, где установлены MS Office и 1С.
                   </Typography>
                 </Box>
               )}
@@ -306,19 +311,18 @@ const SettingsPage = () => {
           </RadioGroup>
         </FormControl>
 
-        {!officeHealth.enabled && (
+        {!rpaHealth.loading && !rpaHealth.enabled && (
           <Alert severity="info" sx={{ mt: 2, borderRadius: 1 }}>
-            РПА-бот сейчас выключен на сервере (флаг <code>rpa.office.enabled=false</code> или
-            WinAppDriver не запущен). Можно оставить выбор «Роботом» — при операциях
-            автоматически произойдёт fallback на программный канал с уведомлением.
+            {rpaHealth.reason
+              || 'Python rpa-service сейчас недоступен. Можно оставить выбор «1С / Office» — при операциях автоматически произойдёт переключение на программный канал.'}
           </Alert>
         )}
 
-        {generationMode === 'rpa' && officeHealth.enabled && (
+        {generationMode === 'rpa' && rpaHealth.enabled && (
           <Alert severity="success" sx={{ mt: 2, borderRadius: 1 }}>
-            Все ваши операции отгрузки / приёмки / списания будут запускать РПА-бота.
-            Если конкретный шаблон ещё не подключён в RpaTemplateBinding — будет fallback на POI с
-            уведомлением.
+            Документы будут генерироваться внешним сервисом (реальные .xlsx / .docx из шаблонов).
+            Если шаблона для конкретного типа документа нет — автоматически произойдёт переключение
+            на программный канал с уведомлением.
           </Alert>
         )}
       </Paper>

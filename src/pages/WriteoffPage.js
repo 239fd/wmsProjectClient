@@ -25,6 +25,17 @@ const REASONS = [
   { value: 'OTHER', label: 'Другое' },
 ];
 
+const INV_STATUS = {
+  AVAILABLE: { label: 'Доступен', color: 'success' },
+  RESERVED: { label: 'Зарезервирован', color: 'warning' },
+  STAGED: { label: 'Подобран', color: 'info' },
+  BLOCKED: { label: 'Заблокирован', color: 'error' },
+  WRITE_OFF: { label: 'Списано', color: 'default' },
+  EXPIRED: { label: 'Просрочено', color: 'error' },
+};
+
+const shortId = (uuid) => (uuid ? `${String(uuid).slice(0, 8)}…` : '—');
+
 const EMPTY_FORM = {
   quantity: '',
   reason: 'DAMAGE',
@@ -219,13 +230,15 @@ const WriteoffPage = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {inventory.map((item) => (
+                    {inventory.map((item) => {
+                      const st = INV_STATUS[item.status] || { label: item.status || '—', color: 'default' };
+                      return (
                       <TableRow key={item.inventoryId} hover>
-                        <TableCell>{item.productName || item.productId}</TableCell>
-                        <TableCell>{item.unitSku || '—'}</TableCell>
+                        <TableCell>{item.productName || shortId(item.productId)}</TableCell>
+                        <TableCell>{item.productSku || item.unitSku || '—'}</TableCell>
                         <TableCell align="right">{item.quantity ?? 0}</TableCell>
                         <TableCell align="right">{item.availableQuantity ?? 0}</TableCell>
-                        <TableCell>{item.status && <Chip label={item.status} size="small" />}</TableCell>
+                        <TableCell>{item.status && <Chip label={st.label} color={st.color} size="small" />}</TableCell>
                         <TableCell align="right">
                           <Button
                             size="small"
@@ -238,7 +251,8 @@ const WriteoffPage = () => {
                           </Button>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -265,8 +279,8 @@ const WriteoffPage = () => {
                   <TableBody>
                     {marked.map((item, i) => (
                       <TableRow key={item.inventoryId || item.productId || i} hover>
-                        <TableCell>{item.productName || item.productId || '—'}</TableCell>
-                        <TableCell>{item.unitSku || item.sku || '—'}</TableCell>
+                        <TableCell>{item.productName || shortId(item.productId)}</TableCell>
+                        <TableCell>{item.productSku || item.unitSku || item.sku || '—'}</TableCell>
                         <TableCell align="right">{item.quantity ?? '—'}</TableCell>
                         <TableCell>{item.reason || '—'}</TableCell>
                         <TableCell align="right">

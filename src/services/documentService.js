@@ -47,8 +47,8 @@ const documentService = {
     return httpService.post(url, data);
   },
 
-  async getOfficeHealth() {
-    return httpService.get(API_ENDPOINTS.OFFICE_RPA.HEALTH);
+  async getRpaHealth() {
+    return httpService.get(API_ENDPOINTS.DOCUMENTS.RPA_HEALTH);
   },
 };
 
