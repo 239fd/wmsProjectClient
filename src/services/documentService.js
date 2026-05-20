@@ -1,6 +1,7 @@
 
 import httpService from './httpService';
-import { API_ENDPOINTS, BACKEND_URL as API_BASE_URL } from '../config/api';
+import { API_ENDPOINTS } from '../config/api';
+import { readFilenameFromResponse } from '../utils/contentDisposition';
 
 const documentService = {
 
@@ -31,11 +32,12 @@ const documentService = {
     if (!response.ok) {
       throw new Error(`Не удалось скачать документ: HTTP ${response.status}`);
     }
+    const effectiveName = readFilenameFromResponse(response, filename);
     const blob = await response.blob();
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = blobUrl;
-    a.download = filename;
+    a.download = effectiveName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

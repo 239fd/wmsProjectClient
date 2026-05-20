@@ -26,6 +26,7 @@ import productService from '../services/productService';
 import { useWarehouses, useEmployees } from '../hooks';
 import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
+import { enumChipProps } from '../utils/enumLabels';
 
 const PERIODS = [
   { value: 'week', label: 'Неделя', days: 7 },
@@ -1132,7 +1133,7 @@ const ExpiringProductsTab = () => {
                     </TableCell>
                     <TableCell>
                       {r.storageConditions ? (
-                        <Chip size="small" variant="outlined" label={r.storageConditions} />
+                        <Chip size="small" variant="outlined" {...enumChipProps('StorageConditions', r.storageConditions)} />
                       ) : '—'}
                     </TableCell>
                   </TableRow>

@@ -26,6 +26,7 @@ import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { inventoryStartSchema, inventoryRecordSchema } from '../validation/schemas';
+import { enumLabel, enumColor } from '../utils/enumLabels';
 
 const STATUS_LABEL = {
   ACTIVE: { label: 'Активна', color: 'success' },
@@ -255,8 +256,8 @@ const InventoryPage = () => {
                         Активная сессия
                       </Typography>
                       <Chip
-                        label={STATUS_LABEL[session.status]?.label || session.status}
-                        color={STATUS_LABEL[session.status]?.color || 'default'}
+                        label={STATUS_LABEL[session.status]?.label || enumLabel('ReceiptSessionStatus', session.status)}
+                        color={STATUS_LABEL[session.status]?.color || enumColor('ReceiptSessionStatus', session.status)}
                         size="small"
                       />
                     </Stack>

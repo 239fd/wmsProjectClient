@@ -27,8 +27,9 @@ const shipRequestService = {
     return httpService.post(API_ENDPOINTS.OPERATIONS.SHIP_REQUEST_UNPICK(requestId), payload);
   },
 
-  async complete(requestId) {
-    return httpService.post(API_ENDPOINTS.OPERATIONS.SHIP_REQUEST_COMPLETE(requestId), {});
+  async complete(requestId, { mode } = {}) {
+    const headers = mode ? { 'X-Generation-Mode': mode } : {};
+    return httpService.post(API_ENDPOINTS.OPERATIONS.SHIP_REQUEST_COMPLETE(requestId), {}, { headers });
   },
 
   async cancel(requestId) {

@@ -17,6 +17,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import EmptyState from '../components/shared/EmptyState';
 import { TableSkeleton } from '../components/shared/LoadingSkeleton';
 import DocumentDownloadButton from '../components/shared/DocumentDownloadButton';
+import GenerationModeCheckbox from '../components/shared/GenerationModeCheckbox';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
@@ -229,10 +230,13 @@ const ReceivePage = () => {
 
   const [tab, setTab] = useState(0);
   const [discrepancyDialog, setDiscrepancyDialog] = useState(null);
+  const [genMode, setGenMode] = useState(
+    () => (localStorage.getItem('generationMode') === 'rpa' ? 'rpa' : 'auto'),
+  );
 
   const handleCompleteSession = useCallback(async (sessionId) => {
     try {
-      await productService.completeReceiptSession(sessionId);
+      await productService.completeReceiptSession(sessionId, { mode: genMode });
       notify('Приёмка завершена');
       setLastResult((prev) => (prev?.session?.sessionId === sessionId
         ? { ...prev, session: { ...prev.session, status: 'COMPLETED' } }
@@ -240,7 +244,7 @@ const ReceivePage = () => {
     } catch (err) {
       notify(err.message || 'Не удалось завершить приёмку', 'error');
     }
-  }, [notify]);
+  }, [notify, genMode]);
 
   const handleSessionDiscrepancySubmit = useCallback(async (sessionId, payload) => {
     try {
@@ -642,7 +646,7 @@ const ReceivePage = () => {
             </Stack>
 
             {lastResult.session.status === 'PAUSED' && (
-              <Stack direction="row" spacing={2}>
+              <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
                 <Button
                   variant="contained"
                   color="success"
@@ -651,6 +655,7 @@ const ReceivePage = () => {
                 >
                   Принять без замечаний
                 </Button>
+                <GenerationModeCheckbox value={genMode} onChange={setGenMode} />
                 <Button
                   variant="outlined"
                   color="warning"

@@ -24,6 +24,7 @@ import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
 import { TableSkeleton } from '../components/shared/LoadingSkeleton';
 import { supplySchema } from '../validation/schemas';
+import { enumLabel, enumColor } from '../utils/enumLabels';
 
 const STATUS = {
   PLANNED:     { label: 'Запланирована', color: 'default' },
@@ -288,8 +289,8 @@ const SuppliesPage = () => {
                   <Typography variant="caption" color="text.secondary">Статус</Typography>
                   <Box>
                     <Chip
-                      label={STATUS[detail.status]?.label || detail.status}
-                      color={STATUS[detail.status]?.color || 'default'}
+                      label={STATUS[detail.status]?.label || enumLabel('SupplyStatus', detail.status)}
+                      color={STATUS[detail.status]?.color || enumColor('SupplyStatus', detail.status)}
                       size="small"
                     />
                   </Box>

@@ -43,8 +43,9 @@ const productService = {
     return httpService.post(API_ENDPOINTS.RECEIPT_SESSIONS.BASE, payload);
   },
 
-  async completeReceiptSession(sessionId) {
-    return httpService.post(API_ENDPOINTS.RECEIPT_SESSIONS.COMPLETE(sessionId), {});
+  async completeReceiptSession(sessionId, { mode } = {}) {
+    const headers = mode ? { 'X-Generation-Mode': mode } : {};
+    return httpService.post(API_ENDPOINTS.RECEIPT_SESSIONS.COMPLETE(sessionId), {}, { headers });
   },
 
   async recordSessionDiscrepancy(sessionId, payload) {

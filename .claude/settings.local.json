@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export FILTER_BRANCH_SQUELCH_WARNING=1)",
+      "Bash(git filter-branch *)",
+      "Bash(gh auth *)",
+      "Bash(gh pr *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(docker version *)",
+      "Bash(grep -iE '\\\\.ps1$')",
+      "Bash(docker-compose config *)",
+      "Bash(curl -s http://localhost:8761/eureka/apps -H \"Accept: application/json\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); apps=d.get\\('applications',{}\\).get\\('application',[]\\); [print\\(f\\\\\"  {a['name']:30s} {a['instance'][0].get\\('status','?'\\)}\\\\\"\\) for a in apps]\")",
+      "Bash(curl -s http://localhost:8761/eureka/apps)",
+      "Bash(curl -s http://localhost:8765/actuator/gateway/routes)",
+      "Bash(python -c \"import sys,json; r=json.load\\(sys.stdin\\); [print\\(f\\\\\"  {x['route_id']:30s} {x.get\\('uri','?'\\)}\\\\\"\\) for x in r]\")",
+      "Bash(curl -s http://localhost:8765/actuator/health)",
+      "Bash(curl -s -o /dev/null -w \"  /api/auth/me  status=%{http_code} \\(ждём 401 — нет токена\\)\\\\n\" http://localhost:8765/api/auth/me)",
+      "Bash(curl -s http://localhost:8765/api/documents/rpa/health)",
+      "Bash(curl -s http://localhost:8040/actuator/health)",
+      "Bash(curl -s http://localhost:8010/actuator/health)",
+      "Bash(curl -s -o /dev/null -w \"  http://localhost:3000  status=%{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s -X POST http://localhost:8765/api/auth/register/director -H 'Content-Type: application/json' -d '{\"email\":\"smoketest@example.com\",\"password\":\"Smoke123!\",\"fullName\":\"Smoke Test\"}' -w '\\\\n  http=%{http_code}\\\\n')",
+      "Bash(gh api *)"
+    ]
+  }
+}

@@ -24,8 +24,10 @@ import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
 import { TableSkeleton } from '../components/shared/LoadingSkeleton';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import GenerationModeCheckbox from '../components/shared/GenerationModeCheckbox';
 import { shipRequestSchema } from '../validation/schemas';
 import FormWizard from '../components/shared/FormWizard';
+import { enumLabel, enumColor } from '../utils/enumLabels';
 
 const STATUS = {
   PLANNED:   { label: 'Запланирована', color: 'default' },
@@ -78,6 +80,9 @@ const ShipPage = () => {
   const [pickFormByItem, setPickFormByItem] = useState({});
 
   const [confirm, setConfirm] = useState({ open: false, action: null });
+  const [genMode, setGenMode] = useState(
+    () => (localStorage.getItem('generationMode') === 'rpa' ? 'rpa' : 'auto'),
+  );
 
   useEffect(() => {
     if (user && !orgId) {
@@ -173,7 +178,7 @@ const ShipPage = () => {
   const handleComplete = async () => {
     setDetailBusy(true);
     try {
-      await shipRequestService.complete(detailRequest.requestId);
+      await shipRequestService.complete(detailRequest.requestId, { mode: genMode });
       notify('Заявка завершена, документы сгенерированы');
       setDetailRequest(null);
       setConfirm({ open: false, action: null });
@@ -378,8 +383,8 @@ const ShipPage = () => {
                     <Typography variant="caption" color="text.secondary">Статус</Typography>
                     <Box>
                       <Chip
-                        label={STATUS[detailRequest.status]?.label || detailRequest.status}
-                        color={STATUS[detailRequest.status]?.color || 'default'}
+                        label={STATUS[detailRequest.status]?.label || enumLabel('ShipmentRequestStatus', detailRequest.status)}
+                        color={STATUS[detailRequest.status]?.color || enumColor('ShipmentRequestStatus', detailRequest.status)}
                         size="small"
                       />
                     </Box>
@@ -527,15 +532,18 @@ const ShipPage = () => {
                   Отменить заявку
                 </Button>
                 {detailRequest.status === 'PICKING' && (
-                  <Button
-                    variant="contained"
-                    color="success"
-                    startIcon={<CheckCircleIcon />}
-                    onClick={() => setConfirm({ open: true, action: 'complete' })}
-                    disabled={detailBusy || Number(detailRequest.progress ?? 0) < 100}
-                  >
-                    Завершить
-                  </Button>
+                  <>
+                    <GenerationModeCheckbox value={genMode} onChange={setGenMode} />
+                    <Button
+                      variant="contained"
+                      color="success"
+                      startIcon={<CheckCircleIcon />}
+                      onClick={() => setConfirm({ open: true, action: 'complete' })}
+                      disabled={detailBusy || Number(detailRequest.progress ?? 0) < 100}
+                    >
+                      Завершить
+                    </Button>
+                  </>
                 )}
               </>
             )}

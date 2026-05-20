@@ -15,6 +15,7 @@ import { selectUser } from '../store/slices/authSlice';
 import erpExtractorService from '../services/erpExtractorService';
 import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
+import { enumChipProps } from '../utils/enumLabels';
 
 const formatDate = (iso) => iso ? new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
@@ -285,7 +286,7 @@ const ErpExtractorPage = () => {
                         <TableCell>{d.expectedDate || d.deliveryDate || '—'}</TableCell>
                         <TableCell align="right">{d.itemsCount ?? d.totalItems ?? '—'}</TableCell>
                         <TableCell>
-                          {d.status && <Chip label={d.status} size="small" />}
+                          {d.status && <Chip {...enumChipProps('SupplyStatus', d.status)} size="small" />}
                         </TableCell>
                       </TableRow>
                     ))}

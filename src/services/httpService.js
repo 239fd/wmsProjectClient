@@ -2,6 +2,7 @@
 
 import api, { clearAuthData } from '../store/api';
 import { API_ENDPOINTS } from '../config/api';
+import { readFilenameFromResponse } from '../utils/contentDisposition';
 
 const buildConfig = (options = {}) => {
     const { includeAuth = true, headers = {}, ...rest } = options;
@@ -47,10 +48,11 @@ const httpService = {
 
     async downloadFile(url, filename) {
         const response = await api.get(url, { responseType: 'blob' });
+        const effectiveName = readFilenameFromResponse(response, filename);
         const blobUrl = window.URL.createObjectURL(response.data);
         const a = document.createElement('a');
         a.href = blobUrl;
-        a.download = filename;
+        a.download = effectiveName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
