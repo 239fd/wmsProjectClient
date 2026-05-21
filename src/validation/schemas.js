@@ -130,29 +130,22 @@ export const warehouseSchema = yup.object({
 
 export const rackSchema = yup.object({
     name: requiredString('Название обязательно'),
-    kind: yup.string().oneOf(['SHELF', 'CELL', 'FRIDGE', 'PALLET'], 'Выберите тип').required('Тип обязателен'),
-    storageConditions: optionalString(),
+    kind: yup.string().oneOf(['SHELF', 'CELL', 'PALLET'], 'Выберите тип').required('Тип обязателен'),
+    storageConditions: yup.string().oneOf(['ROOM', 'COOL', 'FRIDGE', 'FREEZER'], 'Выберите условия')
+        .required('Условия хранения обязательны'),
+    maxWeightKg: yup.number().transform((v, o) => (o === '' || o === null ? null : v)).nullable()
+        .typeError('Грузоподъёмность — число')
+        .positive('Грузоподъёмность > 0')
+        .required('Грузоподъёмность стеллажа обязательна'),
 });
 
 export const shelfSchema = yup.object({
-    shelfCapacityKg: positiveNumber('Грузоподъёмность > 0'),
     lengthCm: positiveNumber('Длина > 0'),
     widthCm: positiveNumber('Ширина > 0'),
     heightCm: positiveNumber('Высота > 0'),
 });
 
 export const cellSchema = yup.object({
-    maxWeightKg: positiveNumber('Грузоподъёмность > 0'),
-    lengthCm: positiveNumber('Длина > 0'),
-    widthCm: positiveNumber('Ширина > 0'),
-    heightCm: positiveNumber('Высота > 0'),
-});
-
-export const fridgeSchema = yup.object({
-    minTemperatureC: yup.number().typeError('Температура — число').required('Минимум обязателен'),
-    maxTemperatureC: yup.number().typeError('Температура — число').required('Максимум обязателен')
-        .test('max-gt-min', 'Максимум должен быть больше минимума',
-            function (value) { return value === undefined || value > this.parent.minTemperatureC; }),
     lengthCm: positiveNumber('Длина > 0'),
     widthCm: positiveNumber('Ширина > 0'),
     heightCm: positiveNumber('Высота > 0'),
@@ -161,8 +154,9 @@ export const fridgeSchema = yup.object({
 export const palletSchema = yup.object({
     palletPlaceCount: yup.number().typeError('Количество — число').integer('Только целое')
         .min(1, 'Минимум 1').required('Количество обязательно'),
-    maxWeightKg: positiveNumber('Грузоподъёмность > 0'),
     palletType: yup.string().oneOf(['EUR', 'FIN', 'US', 'ASIA'], 'Выберите тип').required('Тип обязателен'),
+    maxHeightCm: yup.number().typeError('Высота — число').positive('Высота > 0')
+        .required('Высота слота обязательна'),
 });
 
 export const invitationSchema = yup.object({

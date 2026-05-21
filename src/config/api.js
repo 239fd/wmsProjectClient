@@ -55,7 +55,6 @@ export const API_ENDPOINTS = {
     BY_ID: (id) => `${API_BASE_URL}/api/racks/${id}`,
     SHELVES: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/shelves`,
     CELLS: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/cells`,
-    FRIDGES: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/fridges`,
     PALLETS: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/pallets`,
     SLOTS: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/slots`,
     CELL_BY_ID: (cellId) => `${API_BASE_URL}/api/racks/cells/${cellId}`,
@@ -81,6 +80,9 @@ export const API_ENDPOINTS = {
     BASE: `${API_BASE_URL}/api/supplies`,
     BY_ID: (id) => `${API_BASE_URL}/api/supplies/${id}`,
     STATUS: (id) => `${API_BASE_URL}/api/supplies/${id}/status`,
+    IMPORT_1C: `${API_BASE_URL}/api/supplies/import-1c`,
+    IMPORT_JSON: `${API_BASE_URL}/api/supplies/import-json`,
+    SAMPLE_JSON: `${API_BASE_URL}/api/supplies/sample-json`,
   },
 
   OPERATIONS: {
@@ -135,6 +137,7 @@ export const API_ENDPOINTS = {
     WAREHOUSE_BY_ID: (warehouseId) => `${API_BASE_URL}/api/warehouses/analytics/${warehouseId}`,
     WAREHOUSES_ORG_SUMMARY: (orgId) => `${API_BASE_URL}/api/warehouses/analytics/organization/${orgId}/summary`,
     EMPLOYEES_BY_ORG: (orgId) => `${API_BASE_URL}/api/organizations/${orgId}/analytics/employees`,
+    REPORT: `${API_BASE_URL}/api/analytics/report`,
   },
 
   DOCUMENTS: {
@@ -154,17 +157,6 @@ export const API_ENDPOINTS = {
     BY_OPERATION: (operationId) => `${API_BASE_URL}/api/document-registry/by-operation/${operationId}`,
   },
 
-  ERP_EXTRACTOR: {
-    RUN: `${API_BASE_URL}/api/erp-extractor/run`,
-    DELIVERIES: `${API_BASE_URL}/api/erp-extractor/deliveries`,
-    LOG: `${API_BASE_URL}/api/erp-extractor/log`,
-  },
-
-  ERP_CONNECTIONS: {
-    BASE: `${API_BASE_URL}/api/erp-connections`,
-    BY_ID: (id) => `${API_BASE_URL}/api/erp-connections/${id}`,
-    SET_DEFAULT: (id) => `${API_BASE_URL}/api/erp-connections/${id}/default`,
-  },
 };
 
 export default API_BASE_URL;

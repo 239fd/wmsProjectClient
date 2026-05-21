@@ -27,13 +27,12 @@ const MAX_WIDTH = 1440;
 const ACTIVE_SESSION_KEY = (userId) => `wms_inventory_active_${userId}`;
 
 const ALL_ACTIONS = [
-  { key: 'receive',     label: 'Приём товара',     desc: 'Зафиксировать приёмку',         path: '/main/receive',     icon: CallReceivedIcon, color: '#2e7d32', allowed: ['WORKER'] },
+  { key: 'receive',     label: 'Поставки и приёмка', desc: 'Плановые поставки и приёмка', path: '/main/receive',     icon: CallReceivedIcon, color: '#2e7d32', allowed: ['WORKER'] },
   { key: 'ship',        label: 'Отгрузка',         desc: 'Заявки на отгрузку',            path: '/main/ship',        icon: LocalShippingIcon, color: '#1976d2', allowed: ['WORKER'] },
   { key: 'inventory',   label: 'Инвентаризация',   desc: 'Активная сессия и записи',      path: '/main/inventory',   icon: AssignmentIcon, color: '#0288d1', allowed: ['ACCOUNTANT'] },
   { key: 'revaluation', label: 'Переоценка',       desc: 'Изменение учётной цены',        path: '/main/revaluation', icon: EditIcon, color: '#ed6c02', allowed: ['ACCOUNTANT'] },
   { key: 'writeoff',    label: 'Списание',         desc: 'Списать товар по причине',      path: '/main/writeoff',    icon: RemoveCircleOutlineIcon, color: '#d32f2f', allowed: ['ACCOUNTANT'] },
   { key: 'analytics',   label: 'Аналитика',        desc: 'KPI и динамика операций',       path: '/main/analytics',   icon: AssessmentIcon, color: '#9c27b0', allowed: ['DIRECTOR'] },
-  { key: 'supplies',    label: 'Поставки',         desc: 'Плановые поставки',             path: '/main/supplies',    icon: InventoryIcon, color: '#00695c', allowed: ['WORKER'] },
   { key: 'suppliers',   label: 'Поставщики',       desc: 'Справочник поставщиков',        path: '/main/suppliers',   icon: StorefrontIcon, color: '#5d4037', allowed: ['WORKER'] },
   { key: 'documents',   label: 'Документы',        desc: 'История и скачивание актов',    path: '/main/documents',   icon: DescriptionIcon, color: '#455a64', allowed: ['WORKER', 'ACCOUNTANT'] },
   { key: 'employees',   label: 'Сотрудники',       desc: 'Управление и приглашения',      path: '/main/employees',   icon: GroupIcon, color: '#6d4c41', allowed: ['DIRECTOR'] },
@@ -413,14 +412,18 @@ const MainPage = () => {
   }, []);
 
   const userRole = user?.role || (Array.isArray(user?.roles) ? user.roles[0] : undefined);
-  const actions = ALL_ACTIONS.filter(
-    (a) => a.allowed === 'ALL' || (userRole && a.allowed.includes(userRole))
-  );
+  const directorWithoutOrg = userRole === 'DIRECTOR' && !user?.organizationId;
+  const actions = ALL_ACTIONS.filter((a) => {
+    const roleOk = a.allowed === 'ALL' || (userRole && a.allowed.includes(userRole));
+    if (!roleOk) return false;
+    if (directorWithoutOrg && a.key !== 'organization') return false;
+    return true;
+  });
 
   let Dashboard = null;
   if (userRole === 'WORKER') Dashboard = WorkerDashboard;
   else if (userRole === 'ACCOUNTANT') Dashboard = AccountantDashboard;
-  else if (userRole === 'DIRECTOR') Dashboard = DirectorDashboard;
+  else if (userRole === 'DIRECTOR' && !directorWithoutOrg) Dashboard = DirectorDashboard;
 
   return (
     <Box sx={{
@@ -444,6 +447,24 @@ const MainPage = () => {
         </Paper>
 
         {Dashboard && <Dashboard user={user} />}
+
+        {directorWithoutOrg && (
+          <Alert
+            severity="info"
+            sx={{ mb: 3, borderRadius: 3 }}
+            action={
+              <Box
+                sx={{ cursor: 'pointer', textDecoration: 'underline', fontWeight: 600, mr: 1 }}
+                onClick={() => navigate('/main/organization?firstTime=true')}
+              >
+                Создать организацию
+              </Box>
+            }
+          >
+            Чтобы начать работу с WMS, создайте организацию. Все остальные разделы станут доступны
+            автоматически после создания.
+          </Alert>
+        )}
 
         <Typography variant="h5" fontWeight={700} mb={2}>
           Быстрые действия

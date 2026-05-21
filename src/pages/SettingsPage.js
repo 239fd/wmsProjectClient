@@ -1,18 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, Paper, List, ListItem, ListItemText, Button, Stack,
-  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
   CircularProgress, Alert, Chip, Divider,
-  FormControl, FormLabel, RadioGroup, FormControlLabel, Radio,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { logout, resetAuth } from '../store/slices/authSlice';
 import profileService from '../services/profileService';
-import documentService from '../services/documentService';
 import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
 import { ListSkeleton } from '../components/shared/LoadingSkeleton';
@@ -54,39 +50,7 @@ const SettingsPage = () => {
   const [error, setError] = useState(null);
   const [terminatingId, setTerminatingId] = useState(null);
   const [openDelete, setOpenDelete] = useState(false);
-  const [deleteTimer, setDeleteTimer] = useState(10);
   const [deleting, setDeleting] = useState(false);
-
-  const [generationMode, setGenerationMode] = useState(
-    () => localStorage.getItem('generationMode') || 'auto'
-  );
-  const [rpaHealth, setRpaHealth] = useState({ enabled: null, reason: null, loading: true });
-
-  const checkRpaHealth = useCallback(async () => {
-    setRpaHealth((prev) => ({ ...prev, loading: true }));
-    try {
-      const res = await documentService.getRpaHealth();
-      setRpaHealth({ enabled: !!res?.enabled, reason: res?.reason || null, loading: false });
-    } catch (err) {
-      setRpaHealth({
-        enabled: false,
-        reason: 'Не удалось связаться с сервисом документов.',
-        loading: false,
-      });
-    }
-  }, []);
-
-  useEffect(() => { checkRpaHealth(); }, [checkRpaHealth]);
-
-  const handleModeChange = (nextMode) => {
-    setGenerationMode(nextMode);
-    localStorage.setItem('generationMode', nextMode);
-    notify(
-      nextMode === 'rpa'
-        ? 'Канал генерации: 1С / Office (Python rpa-service)'
-        : 'Канал генерации: программно (Apache POI / PDFBox)'
-    );
-  };
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -107,19 +71,16 @@ const SettingsPage = () => {
     loadSessions();
   }, [loadSessions]);
 
-  useEffect(() => {
-    if (!openDelete) return undefined;
-    setDeleteTimer(10);
-    const id = setInterval(() => {
-      setDeleteTimer((t) => (t > 0 ? t - 1 : 0));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [openDelete]);
-
-  const handleTerminate = async (sessionId) => {
+  const handleTerminate = async (sessionId, { isCurrent = false } = {}) => {
     setTerminatingId(sessionId);
     try {
       await profileService.terminateSession(sessionId);
+      if (isCurrent) {
+        notify('Текущая сессия завершена, выход из аккаунта');
+        await dispatch(logout());
+        navigate('/login', { replace: true });
+        return;
+      }
       notify('Сессия завершена');
       await loadSessions();
     } catch (err) {
@@ -216,21 +177,22 @@ const SettingsPage = () => {
                 <React.Fragment key={sessionId}>
                   <ListItem
                     disableGutters
-                    sx={{ py: 1.5, pr: 12, alignItems: 'flex-start' }}
+                    sx={{ py: 1.5, pr: 22, alignItems: 'flex-start' }}
                     secondaryAction={
-                      isCurrent ? (
-                        <Chip label="Текущая" color="primary" size="small" />
-                      ) : (
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        {isCurrent && (
+                          <Chip label="Текущая" color="primary" size="small" />
+                        )}
                         <Button
                           variant="outlined"
                           color="error"
                           size="small"
-                          onClick={() => handleTerminate(sessionId)}
+                          onClick={() => handleTerminate(sessionId, { isCurrent })}
                           disabled={terminatingId === sessionId}
                         >
-                          {terminatingId === sessionId ? <CircularProgress size={16} /> : 'Завершить'}
+                          {terminatingId === sessionId ? <CircularProgress size={16} /> : (isCurrent ? 'Завершить и выйти' : 'Завершить')}
                         </Button>
-                      )
+                      </Stack>
                     }
                   >
                     <ListItemText
@@ -251,79 +213,6 @@ const SettingsPage = () => {
               );
             })}
           </List>
-        )}
-      </Paper>
-
-      <Paper sx={{ p: 4, borderRadius: 4, mb: 3 }}>
-        <Stack direction="row" alignItems="center" spacing={1} mb={2}>
-          <SmartToyIcon color="primary" />
-          <Typography variant="h6" fontWeight={700}>
-            Канал генерации документов
-          </Typography>
-          {rpaHealth.loading ? (
-            <Chip size="small" label="Проверка…" />
-          ) : rpaHealth.enabled ? (
-            <Chip size="small" color="success" label="1С / Office доступен" />
-          ) : (
-            <Chip size="small" color="default" label="1С / Office недоступен" />
-          )}
-        </Stack>
-
-        <FormControl>
-          <FormLabel sx={{ mb: 1 }}>
-            Каким способом заполнять документы при операциях
-          </FormLabel>
-          <RadioGroup
-            value={generationMode}
-            onChange={(e) => handleModeChange(e.target.value)}
-          >
-            <FormControlLabel
-              value="auto"
-              control={<Radio />}
-              label={(
-                <Box>
-                  <Typography variant="body2" fontWeight={600}>
-                    Программно (Apache POI / PDFBox)
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Документ генерируется server-side из шаблона. Работает всегда, не требует Windows / Office.
-                  </Typography>
-                </Box>
-              )}
-            />
-            <FormControlLabel
-              value="rpa"
-              control={<Radio />}
-              disabled={!rpaHealth.enabled}
-              label={(
-                <Box>
-                  <Typography variant="body2" fontWeight={600}>
-                    1С / Office (Python rpa-service)
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Документ заполняется внешним сервисом, который реально открывает Excel / Word
-                    локально через COM-автоматизацию. Требует запущенный Python rpa-service на
-                    Windows-хосте, где установлены MS Office и 1С.
-                  </Typography>
-                </Box>
-              )}
-            />
-          </RadioGroup>
-        </FormControl>
-
-        {!rpaHealth.loading && !rpaHealth.enabled && (
-          <Alert severity="info" sx={{ mt: 2, borderRadius: 1 }}>
-            {rpaHealth.reason
-              || 'Python rpa-service сейчас недоступен. Можно оставить выбор «1С / Office» — при операциях автоматически произойдёт переключение на программный канал.'}
-          </Alert>
-        )}
-
-        {generationMode === 'rpa' && rpaHealth.enabled && (
-          <Alert severity="success" sx={{ mt: 2, borderRadius: 1 }}>
-            Документы будут генерироваться внешним сервисом (реальные .xlsx / .docx из шаблонов).
-            Если шаблона для конкретного типа документа нет — автоматически произойдёт переключение
-            на программный канал с уведомлением.
-          </Alert>
         )}
       </Paper>
 
@@ -349,7 +238,8 @@ const SettingsPage = () => {
           </Button>
           <Typography variant="caption" color="text.secondary">
             При удалении аккаунта все ваши данные будут стёрты безвозвратно.
-            Если вы директор — организация будет архивирована, склады удалены, сотрудники отвязаны.
+            Если вы директор — организация, склады, товары, документы и список сотрудников будут удалены.
+            После удаления можно зарегистрироваться заново с тем же email.
           </Typography>
         </Stack>
       </Paper>
@@ -358,10 +248,17 @@ const SettingsPage = () => {
         open={openDelete}
         onClose={() => setOpenDelete(false)}
         onConfirm={handleDeleteAccount}
-        busy={deleting || deleteTimer > 0}
+        busy={deleting}
+        countdownSeconds={10}
         title="Удаление аккаунта"
-        message={<>Вы уверены, что хотите удалить аккаунт? <b>Восстановить будет невозможно.</b></>}
-        confirmText={deleteTimer > 0 ? `Удалить (${deleteTimer})` : 'Удалить'}
+        message={(
+          <>
+            Аккаунт и все привязанные данные будут <b>удалены безвозвратно</b>.
+            {' '}Если вы директор — организация, склады, товары, документы и список сотрудников будут удалены без возможности восстановления.
+            {' '}После удаления вы сможете зарегистрироваться заново с тем же email.
+          </>
+        )}
+        confirmText="Удалить аккаунт"
         confirmColor="error"
       />
     </Box>

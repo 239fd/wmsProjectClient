@@ -23,17 +23,16 @@ import { useDispatch, useSelector } from 'react-redux';
 import { logout, selectUser } from '../../store/slices/authSlice';
 
 const NAV_ITEMS = [
-    {key: 'receive',      label: 'Прием товара',    path: '/main/receive',      allowed: ['WORKER']},
-    {key: 'ship',         label: 'Отгрузка',        path: '/main/ship',         allowed: ['WORKER']},
-    {key: 'inventory',    label: 'Инвентаризация',  path: '/main/inventory',    allowed: ['ACCOUNTANT']},
-    {key: 'revaluation',  label: 'Переоценка',      path: '/main/revaluation',  allowed: ['ACCOUNTANT']},
-    {key: 'writeoff',     label: 'Списание',        path: '/main/writeoff',     allowed: ['ACCOUNTANT']},
-    {key: 'supplies',     label: 'Поставки',        path: '/main/supplies',     allowed: ['WORKER']},
-    {key: 'documents',    label: 'Документы',       path: '/main/documents',    allowed: ['WORKER', 'ACCOUNTANT']},
-    {key: 'suppliers',    label: 'Поставщики',      path: '/main/suppliers',    allowed: ['WORKER']},
-    {key: 'analytics',    label: 'Аналитика',       path: '/main/analytics',    allowed: ['DIRECTOR']},
-    {key: 'employees',    label: 'Сотрудники',      path: '/main/employees',    allowed: ['DIRECTOR']},
-    {key: 'organization', label: 'Организация',     path: '/main/organization', allowed: ['DIRECTOR']},
+    {key: 'receive',      label: 'Поставки',        path: '/main/receive',      allowed: ['WORKER'],     requiresOrg: true},
+    {key: 'ship',         label: 'Отгрузка',        path: '/main/ship',         allowed: ['WORKER'],     requiresOrg: true},
+    {key: 'inventory',    label: 'Инвентаризация',  path: '/main/inventory',    allowed: ['ACCOUNTANT'], requiresOrg: true},
+    {key: 'revaluation',  label: 'Переоценка',      path: '/main/revaluation',  allowed: ['ACCOUNTANT'], requiresOrg: true},
+    {key: 'writeoff',     label: 'Списание',        path: '/main/writeoff',     allowed: ['ACCOUNTANT'], requiresOrg: true},
+    {key: 'documents',    label: 'Документы',       path: '/main/documents',    allowed: ['WORKER', 'ACCOUNTANT'], requiresOrg: true},
+    {key: 'suppliers',    label: 'Поставщики',      path: '/main/suppliers',    allowed: ['WORKER'],     requiresOrg: true},
+    {key: 'analytics',    label: 'Аналитика',       path: '/main/analytics',    allowed: ['DIRECTOR'],   requiresOrg: true},
+    {key: 'employees',    label: 'Сотрудники',      path: '/main/employees',    allowed: ['DIRECTOR'],   requiresOrg: true},
+    {key: 'organization', label: 'Организация',     path: '/main/organization', allowed: ['DIRECTOR'],   requiresOrg: false},
 ];
 
 const ROLE_LABELS = {
@@ -51,9 +50,13 @@ const MainNavbar = () => {
     const [mobileOpen, setMobileOpen] = useState(false);
 
     const userRole = user?.role || (Array.isArray(user?.roles) ? user.roles[0] : undefined);
-    const navItems = NAV_ITEMS.filter(
-        (item) => item.allowed === 'ALL' || (userRole && item.allowed.includes(userRole))
-    );
+    const hasOrg = !!user?.organizationId;
+    const navItems = NAV_ITEMS.filter((item) => {
+        const roleOk = item.allowed === 'ALL' || (userRole && item.allowed.includes(userRole));
+        if (!roleOk) return false;
+        if (item.requiresOrg && !hasOrg) return false;
+        return true;
+    });
 
     const handleSettingsClick = (event) => {
         setAnchorEl(event.currentTarget);

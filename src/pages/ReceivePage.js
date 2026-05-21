@@ -18,6 +18,7 @@ import EmptyState from '../components/shared/EmptyState';
 import { TableSkeleton } from '../components/shared/LoadingSkeleton';
 import DocumentDownloadButton from '../components/shared/DocumentDownloadButton';
 import GenerationModeCheckbox from '../components/shared/GenerationModeCheckbox';
+import SuppliesSection from '../components/receive/SuppliesSection';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
@@ -49,9 +50,17 @@ const EMPTY_ITEM = {
   batchId: '',
   batchNumber: '',
   expiryDate: '',
+  packagingType: 'BOX',
   cellId: '',
   notes: '',
 };
+
+const PACKAGING_OPTIONS = [
+  { value: 'PALLET', label: 'Паллет' },
+  { value: 'BOX', label: 'Коробка' },
+  { value: 'CRATE', label: 'Ящик' },
+  { value: 'EACH', label: 'Поштучно' },
+];
 
 const ReceivePage = () => {
   const navigate = useNavigate();
@@ -182,6 +191,7 @@ const ReceivePage = () => {
           pricePerUnit: it.pricePerUnit ?? 0,
           batchNumber: it.batchNumber || null,
           expiryDate: it.expiryDate || null,
+          packagingType: it.packagingType || null,
           notes: it.notes || null,
         })),
       });
@@ -414,6 +424,7 @@ const ReceivePage = () => {
                 <TableCell align="right" sx={{ width: 110 }}>Цена *</TableCell>
                 <TableCell sx={{ width: 130 }}>№ партии *</TableCell>
                 <TableCell sx={{ width: 150 }}>Срок годности *</TableCell>
+                <TableCell sx={{ width: 130 }}>Упаковка</TableCell>
                 <TableCell sx={{ width: 60 }}></TableCell>
               </TableRow>
             </TableHead>
@@ -460,16 +471,50 @@ const ReceivePage = () => {
                         helperText={errors.items?.[i]?.expiryDate?.message}
                       />
                     </TableCell>
+                    <TableCell>
+                      <Controller
+                        control={control}
+                        name={`items.${i}.packagingType`}
+                        render={({ field }) => (
+                          <FormControl size="small" fullWidth>
+                            <Select {...field} displayEmpty>
+                              {PACKAGING_OPTIONS.map((opt) => (
+                                <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        )}
+                      />
+                    </TableCell>
                     <TableCell align="right">
-                      <Tooltip title="Удалить">
-                        <IconButton size="small" color="error" onClick={() => itemsField.remove(i)}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                        <Tooltip title="Дублировать (новая партия того же товара)">
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              const src = getValues(`items.${i}`);
+                              itemsField.append({
+                                ...src,
+                                batchId: '',
+                                batchNumber: '',
+                                expiryDate: '',
+                                quantity: '',
+                              });
+                            }}
+                          >
+                            <AddIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Удалить">
+                          <IconButton size="small" color="error" onClick={() => itemsField.remove(i)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell colSpan={6} sx={{ pt: 0 }}>
+                    <TableCell colSpan={7} sx={{ pt: 0 }}>
                       <Stack direction="row" spacing={2}>
                         <TextField
                           size="small" label="ID ячейки" sx={{ flex: 1 }}
@@ -517,6 +562,7 @@ const ReceivePage = () => {
               <TableCell align="right">Сумма</TableCell>
               <TableCell>Партия</TableCell>
               <TableCell>Срок годности</TableCell>
+              <TableCell>Упаковка</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -533,6 +579,7 @@ const ReceivePage = () => {
                   <TableCell align="right">{sum.toFixed(2)}</TableCell>
                   <TableCell>{it.batchNumber || '—'}</TableCell>
                   <TableCell>{it.expiryDate || '—'}</TableCell>
+                  <TableCell>{PACKAGING_OPTIONS.find((p) => p.value === it.packagingType)?.label || '—'}</TableCell>
                 </TableRow>
               );
             })}
@@ -541,7 +588,7 @@ const ReceivePage = () => {
               <TableCell align="right" sx={{ borderBottom: 0 }}>
                 <Typography variant="body2" fontWeight={700}>Итого: {totalSum.toFixed(2)}</Typography>
               </TableCell>
-              <TableCell colSpan={2} sx={{ borderBottom: 0 }} />
+              <TableCell colSpan={3} sx={{ borderBottom: 0 }} />
             </TableRow>
           </TableBody>
         </Table>
@@ -582,7 +629,20 @@ const ReceivePage = () => {
   return (
     <Box sx={{ width: '100%', bgcolor: '#f5f5f5', minHeight: '100vh', pt: 4, pb: 6 }}>
       <Box sx={{ width: '100%', maxWidth: 1440, mx: 'auto', px: { xs: 2, md: 3 } }}>
-        <Typography variant="h4" fontWeight={700} mb={3}>Приёмка товара</Typography>
+        <Typography variant="h4" fontWeight={700} mb={3}>Поставки и приёмка</Typography>
+
+        <SuppliesSection
+          onPickReceive={(supply) => {
+            if (supply?.warehouseId) setValue('warehouseId', supply.warehouseId);
+            if (supply?.supplierId) setValue('supplierId', supply.supplierId);
+            const id = supply?.supplyId || supply?.id;
+            if (id) setValue('supplyId', id);
+            notify('Поставка выбрана — заполните позиции ниже', 'info');
+            try {
+              window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+            } catch { /* ignore */ }
+          }}
+        />
 
         {lastResult?.session && (
           <Paper sx={{ mb: 3, borderRadius: 2, p: 2 }}>

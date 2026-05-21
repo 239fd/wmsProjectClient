@@ -1,6 +1,8 @@
 
 import httpService from './httpService';
+import api from '../store/api';
 import { API_ENDPOINTS } from '../config/api';
+import { readFilenameFromResponse } from '../utils/contentDisposition';
 
 const analyticsService = {
 
@@ -50,6 +52,26 @@ const analyticsService = {
   async getExpiringProducts(withinDays = 30) {
     const url = `${API_ENDPOINTS.ANALYTICS.EXPIRING_PRODUCTS}?withinDays=${withinDays}`;
     return httpService.get(url);
+  },
+
+  async generateReport(request, fallbackFilename = 'analytics-report.pdf') {
+    const response = await api.post(API_ENDPOINTS.ANALYTICS.REPORT, request, {
+      responseType: 'blob',
+    });
+    const filename = readFilenameFromResponse(response, fallbackFilename);
+    const blobUrl = window.URL.createObjectURL(response.data);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(blobUrl);
+    return {
+      documentId: response.headers?.['x-document-id'] || null,
+      documentNumber: response.headers?.['x-document-number'] || null,
+      filename,
+    };
   },
 };
 

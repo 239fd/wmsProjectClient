@@ -18,8 +18,14 @@ import {
 const rackTypes = [
   { value: 'SHELF', label: 'Стеллаж с полками' },
   { value: 'CELL', label: 'Ячеистый стеллаж' },
-  { value: 'FRIDGE', label: 'Холодильник' },
   { value: 'PALLET', label: 'Паллетный стеллаж' },
+];
+
+const STORAGE_CONDITIONS = [
+  { value: 'ROOM', label: 'Комнатная температура (от 15 до 25 °C)' },
+  { value: 'COOL', label: 'Прохладный режим (от 5 до 15 °C)' },
+  { value: 'FRIDGE', label: 'Холодильник (от 0 до 5 °C)' },
+  { value: 'FREEZER', label: 'Морозильник (от -18 до -24 °C)' },
 ];
 
 const RackDialog = ({ open, onClose, onSave, initialData = null }) => {
@@ -27,14 +33,13 @@ const RackDialog = ({ open, onClose, onSave, initialData = null }) => {
     initialData || {
       name: '',
       kind: 'SHELF',
+      storageConditions: 'ROOM',
 
       shelf_count: '',
       shelf_capacity_kg: '',
 
       cell_count: '',
       max_weight_kg: '',
-
-      temperature_c: '',
 
       pallet_place_count: '',
 
@@ -103,17 +108,6 @@ const RackDialog = ({ open, onClose, onSave, initialData = null }) => {
             />
           </>
         );
-      case 'FRIDGE':
-        return (
-          <TextField
-            label="Температура (°C)"
-            name="temperature_c"
-            type="number"
-            value={form.temperature_c}
-            onChange={handleChange}
-            fullWidth
-          />
-        );
       case 'PALLET':
         return (
           <>
@@ -148,8 +142,6 @@ const RackDialog = ({ open, onClose, onSave, initialData = null }) => {
         return 'Размеры одной полки';
       case 'CELL':
         return 'Размеры одной ячейки';
-      case 'FRIDGE':
-        return 'Размеры холодильника';
       case 'PALLET':
         return 'Размеры паллетного стеллажа';
       default:
@@ -183,6 +175,22 @@ const RackDialog = ({ open, onClose, onSave, initialData = null }) => {
               {rackTypes.map((type) => (
                 <MenuItem key={type.value} value={type.value}>
                   {type.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth required>
+            <InputLabel>Условия хранения (температурная зона)</InputLabel>
+            <Select
+              name="storageConditions"
+              value={form.storageConditions || 'ROOM'}
+              label="Условия хранения (температурная зона)"
+              onChange={handleChange}
+            >
+              {STORAGE_CONDITIONS.map((c) => (
+                <MenuItem key={c.value} value={c.value}>
+                  {c.label}
                 </MenuItem>
               ))}
             </Select>

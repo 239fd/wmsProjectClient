@@ -27,27 +27,34 @@ npm test -- --testPathPattern=Login    # filter by path
 
 ```
 src/
-├── pages/          # one file per route (16 working pages, see route map)
+├── pages/          # one file per route (21 working pages, see route map)
 ├── routes/AppRouter.js     # all routes + ProtectedRoute/RoleGuard/GuestRoute guards
 ├── components/
 │   ├── layout/     # GuestLayout, MainLayout, Navbar, MainNavbar
-│   └── shared/     # ConfirmDialog, RackDialog, EmptyState, ErrorBoundary,
-│                   #   LoadingSkeleton, OAuthButtons
+│   ├── shared/     # ConfirmDialog, RackDialog, EmptyState, ErrorBoundary,
+│   │               #   LoadingSkeleton, OAuthButtons, FormWizard,
+│   │               #   PageBreadcrumbs, DocumentDownloadButton,
+│   │               #   GenerationModeCheckbox
+│   ├── analytics/  # AnalyticsReportDialog (DIRECTOR analytics PDF)
+│   └── receive/    # SuppliesSection, ImportSupplyDialog, CreateSupplyDialog
 ├── context/
 │   ├── SnackbarContext.js  # global toast — useSnackbar() hook
 │   └── AuthContext.js      # legacy (Redux is the source of truth, but exists)
 ├── hooks/
 │   ├── index.js            # useWarehouses, useEmployees, useSuppliers,
 │   │                       #   useInventoryByWarehouse
-│   └── useDirectoryFetch.js # generic { data, loading, error, refresh, setData }
+│   ├── useDirectoryFetch.js # generic { data, loading, error, refresh, setData }
+│   └── useDraft.js          # localStorage-backed RHF draft autosave
+│                             #   (redux-persist + per-form key); used by ReceivePage
 ├── services/       # per-domain API clients on httpService:
 │                   #   auth, profile, organization, warehouse, product,
-│                   #   document, analytics, supplier, supply, shipRequest,
-│                   #   erpExtractor + httpService (base)
+│                   #   document, analytics, supplier, supply (включая importFrom1c /
+│                   #   importFromJson / downloadSampleJson), shipRequest +
+│                   #   httpService (base) + index (barrel)
 ├── store/
 │   ├── api.js      # configured axios instance with interceptors
-│   ├── index.js    # configureStore — only `auth` slice registered
-│   └── slices/authSlice.js
+│   ├── index.js    # configureStore — auth + warehouses + suppliers + employees slices
+│   └── slices/{authSlice,warehousesSlice,suppliersSlice,employeesSlice}.js
 ├── config/
 │   ├── api.js      # API_ENDPOINTS — single source of truth for backend URLs
 │   └── theme.js    # MUI theme
@@ -68,25 +75,25 @@ src/
 
 # MainLayout (ProtectedRoute → /login if not authenticated; ErrorBoundary wraps Outlet)
 /main                → MainPage              (dashboard with role-aware quick-actions)
-/main/profile        → ProfilePage           (ALL)
-/main/settings       → SettingsPage          (ALL)
+/main/profile        → ProfilePage           (ALL — no RoleGuard)
+/main/settings       → SettingsPage          (ALL — no RoleGuard)
 /main/organization   → OrganizationPage      (DIRECTOR)
 /main/employees      → EmployeesPage         (DIRECTOR)
-/main/receive        → ReceivePage           (WORKER, DIRECTOR)
-/main/ship           → ShipPage              (WORKER, DIRECTOR)
-/main/inventory      → InventoryPage         (ALL)
-/main/writeoff       → WriteoffPage          (ACCOUNTANT, DIRECTOR)
-/main/revaluation    → RevaluationPage       (ACCOUNTANT, DIRECTOR)
-/main/analytics      → AnalyticsPage         (ACCOUNTANT, DIRECTOR)
-/main/suppliers      → SuppliersPage         (ACCOUNTANT, DIRECTOR)
-/main/supplies       → SuppliesPage          (ALL)
-/main/documents      → DocumentsPage         (ALL)
-/main/erp-extractor  → ErpExtractorPage      (DIRECTOR)
+/main/receive        → ReceivePage           (WORKER) — «Поставки и приёмка», объединена с supplies/erp-extractor
+/main/ship           → ShipPage              (WORKER)
+/main/inventory      → InventoryPage         (ACCOUNTANT)
+/main/writeoff       → WriteoffPage          (ACCOUNTANT)
+/main/revaluation    → RevaluationPage       (ACCOUNTANT)
+/main/analytics      → AnalyticsPage         (DIRECTOR)
+/main/suppliers      → SuppliersPage         (WORKER)
+/main/supplies       → <Navigate to="/main/receive">  (legacy alias 2026-05-21)
+/main/erp-extractor  → <Navigate to="/main/receive">  (legacy alias 2026-05-21)
+/main/documents      → DocumentsPage         (WORKER, ACCOUNTANT)
 
 *                    → <Navigate to="/" />
 ```
 
-Route guarding via three thin wrappers in `AppRouter.js`: `ProtectedRoute` (auth-required), `RoleGuard allowed={[...]}` (specific roles), `GuestRoute` (login/register only when logged out). All read `selectIsAuthenticated` / `selectUser`. When adding an authenticated page: drop a file in `pages/`, import in `AppRouter.js`, add a `<Route>` under `/main` with appropriate `RoleGuard`, and register a navbar entry in `MainNavbar.js` `NAV_ITEMS` with matching `allowed`.
+Route guarding via four thin wrappers in `AppRouter.js`: `ProtectedRoute` (auth-required), `RoleGuard allowed={[...]}` (specific roles — single-role guards only), `GuestRoute` (login/register only when logged out), и **`OrgRequiredRoute` (новый 2026-05-21)** — оборачивает все DIRECTOR-маршруты кроме `/profile`, `/settings`, `/organization`, редиректит на `/main/organization?firstTime=true` если у DIRECTOR'a `organizationId` пустой. **Roles are mutually exclusive** — guards в `AppRouter` list exactly one role each (inventory/writeoff/revaluation = ACCOUNTANT, ship/receive/suppliers = WORKER, organization/employees/analytics = DIRECTOR; `/main/supplies` и `/main/erp-extractor` теперь redirect на `/main/receive`). `MainNavbar.NAV_ITEMS` имеют флаг `requiresOrg` — пункты скрываются у DIRECTOR'a без org. `MainPage.js` показывает онбординг-карточку «Создайте организацию» вместо обычного дашборда для DIRECTOR без org. When adding an authenticated page: drop a file in `pages/`, import in `AppRouter.js`, add a `<Route>` under `/main` с подходящим guard'ом (если требуется org — оберни в `OrgRequiredRoute`), и зарегистрируй в `MainNavbar.js` `NAV_ITEMS` с `requiresOrg: true|false`.
 
 ## API integration
 
@@ -137,6 +144,8 @@ notify('Внимание', 'warning', { duration: 6000 });
   onClose={() => setOpen(false)}
   onConfirm={handleDelete}
   busy={busy}                           // disables buttons + shows spinner
+  countdownSeconds={10}                 // optional: блокирует кнопку на N секунд + рисует LinearProgress
+                                        //          (используется на SettingsPage для «Удалить аккаунт»)
   title="Удаление склада"
   message={<>Удалить склад <b>{wh.name}</b>?</>}
   confirmText="Удалить"                 // default 'Подтвердить'
@@ -219,6 +228,13 @@ const { data: warehouses, loading, error, refresh } = useWarehouses();
 - **Backend extensions made in this codebase** (require service rebuilds):
   - `EmployeeResponse` (org-service) — extra fields `isActive`, `isBlocked`.
   - `CompleteOAuthRegistrationRequest` + `OAuthService` (sso-service) — `invitationToken` field + invitation OAuth handling with email match check.
+  - **Rack-модель (2026-05-21):** убран `FRIDGE` как `kind`, добавлено отдельное поле `storageConditions` (`ROOM`/`COOL`/`FRIDGE`/`FREEZER`) на стеллаже, плюс `maxWeightKg` хранится на уровне стеллажа а не слота. У `Product` появилось `requiredStorageCondition` (nullable) — задаёт дефолт для всех партий товара. `RackDialog.js` и `OrganizationPage.js` обновлены: при создании стеллажа выбор typed kind+conditions+maxWeight (required); при добавлении слотов — только габариты + Alert «Грузоподъёмность задана на уровне стеллажа».
+  - **Таблица ячеек со статусом и загрузкой (2026-05-21):** `RackService.getCellsByRack` обогащает каждый слот через cross-service вызов `POST /api/internal/inventory/cells-load` к product-service (warehouse-service `client/ProductClient.java` + `@LoadBalanced RestTemplate`). UI `RackSlotsTable` показывает Chip `Доступна`/`Занята` + сводную строку «Грузоподъёмность стеллажа: X кг · занято: N/M». `applyServerError.js` уже маппит `{УНП|ИНН}` на поле `unp`.
+  - **DIRECTOR delete (2026-05-21):** `DELETE /api/profile` для DIRECTOR теперь физический wipe всего (org, склады, товары, документы MinIO, email освобождается). UI текст «Удалить аккаунт» обновлён, использует `countdownSeconds={10}` для защиты от случайного клика.
+  - **Sessions (2026-05-21):** `terminateSession` на бэке делает `DELETE FROM login_audit` (не UPDATE) + чистит Redis-токен по hash. UI кнопка «Завершить и выйти» рядом с Chip «Текущая» — terminate + автоматический `dispatch(logout())` + navigate.
+  - **Analytics (2026-05-21):** `WarehouseAnalyticsService` возвращает реальную структуру (`racksByKind`, `racksByStorageConditions`, `totalSlots`, `occupiedSlots`, `utilizationPercent`); `AnalyticsPage` Overview + Warehouses вкладки подключены, сводная карточка по сети складов с Chip'ами зон/типов стеллажей.
+  - **Settings (2026-05-21):** блок «Канал генерации документов» удалён из `SettingsPage` — выбор канала только в самих операциях.
+  - **Унификация поставок и приёмки (2026-05-21):** страницы `/main/supplies` и `/main/erp-extractor` снесены (теперь redirect на `/main/receive`). `ReceivePage` имеет шапку `<SuppliesSection>` (новый компонент в `components/receive/`) со списком поставок, фильтрами статуса, KPI-счётчиками и двумя кнопками: «Запарсить ▾» (1С / JSON / скачать пример) и «Создать вручную». Диалоги: `ImportSupplyDialog`, `CreateSupplyDialog` (переключатель quantity-only / детально). Wizard приёмки расширен колонкой «Упаковка» (PALLET/BOX/CRATE/EACH) и кнопкой «Дублировать строку» для разных партий одного товара с разными `expiryDate`. `supplyService` расширен `importFrom1c`/`importFromJson`/`downloadSampleJson`. Удалены: `pages/SuppliesPage.js`, `pages/ErpExtractorPage.js`, `services/erpExtractorService.js`, `services/erpConnectionService.js`, `components/shared/ExtractDataDialog.js`. `API_ENDPOINTS.SUPPLIES` дополнен `IMPORT_1C`/`IMPORT_JSON`/`SAMPLE_JSON`; `API_ENDPOINTS.ERP_EXTRACTOR`/`ERP_CONNECTIONS` удалены.
 
 ## Environment files
 
@@ -232,7 +248,7 @@ const { data: warehouses, loading, error, refresh } = useWarehouses();
 1. Add URL (or URL-builder function) to `src/config/api.js` under the right `API_ENDPOINTS` section — **never** hardcode `/api/...` in a component/service.
 2. Use it from a `services/<domain>Service.js` (fetch via `httpService`) or from a Redux thunk (axios via `store/api.js`). Don't call `fetch`/`axios` directly from components.
 3. If it's authenticated, services and the axios instance attach the Bearer token automatically — don't pass manually.
-4. Gateway route lives in `backend/api-gateway/.../GatewayConfig.java`. Existing prefixes: `/api/auth`, `/api/profile`, `/api/oauth`, `/api/organizations`, `/api/invitations`, `/api/warehouses`, `/api/racks`, `/api/products`, `/api/batches`, `/api/operations`, `/api/inventory`, `/api/inventory-check`, `/api/analytics`, `/api/supplies`, `/api/suppliers`, `/api/erp-extractor`, `/api/product-card`, `/api/documents`. New prefix → edit `GatewayConfig.java`.
+4. Gateway route lives in `backend/api-gateway/.../config/GatewayConfig.java`. Existing prefixes: `/api/auth`, `/api/profile`, `/api/oauth`, `/api/organizations`, `/api/invitations`, `/api/warehouses`, `/api/racks`, `/api/products`, `/api/batches`, `/api/operations`, `/api/inventory`, `/api/inventory-check`, `/api/analytics`, `/api/supplies` (включает `import-1c`/`import-json`/`sample-json`), `/api/suppliers`, `/api/product-card`, `/api/document-registry`, `/api/receipt-sessions`, `/api/documents`. **Снесены 2026-05-21:** `/api/erp-extractor`, `/api/erp-connections`. New prefix → edit `GatewayConfig.java`.
 
 ## Docker
 

@@ -18,6 +18,7 @@ import {
   Schedule as ScheduleIcon,
   WarningAmber as WarningAmberIcon,
   EmojiEvents as EmojiEventsIcon,
+  Description as DescriptionIcon,
 } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import { selectUser } from '../store/slices/authSlice';
@@ -26,6 +27,7 @@ import productService from '../services/productService';
 import { useWarehouses, useEmployees } from '../hooks';
 import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
+import AnalyticsReportDialog from '../components/analytics/AnalyticsReportDialog';
 import { enumChipProps } from '../utils/enumLabels';
 
 const PERIODS = [
@@ -136,6 +138,7 @@ const AnalyticsPage = () => {
 
   const [period, setPeriod] = useState('month');
   const [tab, setTab] = useState(0);
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
 
   const [inventory, setInventory] = useState(null);
   const [opsDynamics, setOpsDynamics] = useState(null);
@@ -155,19 +158,13 @@ const AnalyticsPage = () => {
 
   const loadOverview = useCallback(async () => {
     setOverviewLoading(true);
-    const tasks = [
+    const [inv, ops, opsCmp, invCmp, abc] = await Promise.all([
       analyticsService.getInventoryAnalytics().catch((e) => ({ __err: e.message })),
       analyticsService.getOperationsDynamics(dateRange.startDate, dateRange.endDate).catch((e) => ({ __err: e.message })),
       analyticsService.getOperationsComparison(dateRange.startDate, dateRange.endDate).catch((e) => ({ __err: e.message })),
       analyticsService.getInventoryComparison(dateRange.startDate, dateRange.endDate).catch((e) => ({ __err: e.message })),
       analyticsService.getAbcDistribution().catch((e) => ({ __err: e.message })),
-    ];
-    if (orgId) {
-      tasks.push(analyticsService.getWarehousesOrgSummary(orgId).catch((e) => ({ __err: e.message })));
-    } else {
-      tasks.push(Promise.resolve(null));
-    }
-    const [inv, ops, opsCmp, invCmp, abc, whs] = await Promise.all(tasks);
+    ]);
 
     if (inv && !inv.__err) setInventory(inv);
     else if (inv?.__err) notify(`Аналитика остатков: ${inv.__err}`, 'error');
@@ -184,12 +181,19 @@ const AnalyticsPage = () => {
     if (abc && !abc.__err) setAbcDistribution(abc);
     else setAbcDistribution(null);
 
-    if (whs && !whs.__err) setWarehousesSummary(whs);
-
     setOverviewLoading(false);
-  }, [dateRange.startDate, dateRange.endDate, orgId, notify]);
+  }, [dateRange.startDate, dateRange.endDate, notify]);
 
   useEffect(() => { loadOverview(); }, [loadOverview]);
+
+  useEffect(() => {
+    if (!orgId) return;
+    let cancelled = false;
+    analyticsService.getWarehousesOrgSummary(orgId)
+      .then((whs) => { if (!cancelled && whs) setWarehousesSummary(whs); })
+      .catch((e) => notify(`Сводка по складам: ${e.message}`, 'error'));
+    return () => { cancelled = true; };
+  }, [orgId, notify]);
 
   const totalOpsInPeriod = useMemo(() => {
     if (!opsDynamics?.operationsByType) return null;
@@ -199,21 +203,30 @@ const AnalyticsPage = () => {
   return (
     <Box sx={{ width: '100%', pt: 4, pb: 6, bgcolor: '#f5f5f5', minHeight: '100vh' }}>
       <Box sx={{ width: '100%', maxWidth: 1440, mx: 'auto', px: { xs: 2, md: 3 } }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" gap={2}>
           <Typography variant="h4" fontWeight={700}>Аналитика и отчётность</Typography>
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel>Период</InputLabel>
-            <Select
-              value={period}
-              label="Период"
-              variant="outlined"
-              onChange={(e) => setPeriod(e.target.value)}
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Button
+              variant="contained"
+              startIcon={<DescriptionIcon />}
+              onClick={() => setReportDialogOpen(true)}
             >
-              {PERIODS.map((p) => (
-                <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+              Сформировать отчёт
+            </Button>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Период</InputLabel>
+              <Select
+                value={period}
+                label="Период"
+                variant="outlined"
+                onChange={(e) => setPeriod(e.target.value)}
+              >
+                {PERIODS.map((p) => (
+                  <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
         </Stack>
 
         {}
@@ -307,6 +320,10 @@ const AnalyticsPage = () => {
           )}
         </Paper>
       </Box>
+      <AnalyticsReportDialog
+        open={reportDialogOpen}
+        onClose={() => setReportDialogOpen(false)}
+      />
     </Box>
   );
 };
@@ -444,7 +461,11 @@ const OverviewTab = ({ loading, warehousesSummary, opsDynamics, abcDistribution,
           ) : (
             <Grid container spacing={2}>
               {warehousesList.map((w, i) => {
-                const fill = Number(w.fillPercentage ?? w.utilization ?? 0);
+                const structure = w.structure || {};
+                const fill = Number(structure.utilizationPercent ?? w.fillPercentage ?? w.utilization ?? 0);
+                const occupied = structure.occupiedSlots ?? w.occupiedCells;
+                const total = structure.totalSlots ?? w.totalCells;
+                const racksCount = structure.racksCount ?? w.racksCount;
                 return (
                   <Grid size={{ xs: 12, sm: 6 }} key={w.warehouseId || w.id || i}>
                     <Card variant="outlined" sx={{ borderRadius: 3 }}>
@@ -457,16 +478,18 @@ const OverviewTab = ({ loading, warehousesSummary, opsDynamics, abcDistribution,
                         </Stack>
                         <Stack spacing={1}>
                           <Stack direction="row" justifyContent="space-between">
-                            <Typography variant="body2" color="text.secondary">Уникальных товаров</Typography>
-                            <Typography variant="body2" fontWeight={600}>{w.uniqueProducts ?? '—'}</Typography>
+                            <Typography variant="body2" color="text.secondary">Стеллажей</Typography>
+                            <Typography variant="body2" fontWeight={600}>{racksCount ?? '—'}</Typography>
                           </Stack>
                           <Stack direction="row" justifyContent="space-between">
-                            <Typography variant="body2" color="text.secondary">Объём</Typography>
-                            <Typography variant="body2" fontWeight={600}>{w.totalQuantity ?? '—'}</Typography>
+                            <Typography variant="body2" color="text.secondary">Ячеек занято</Typography>
+                            <Typography variant="body2" fontWeight={600}>
+                              {occupied ?? '—'}{total != null ? ` / ${total}` : ''}
+                            </Typography>
                           </Stack>
                           <Box>
                             <Stack direction="row" justifyContent="space-between" mb={0.5}>
-                              <Typography variant="body2" color="text.secondary">Заполненность</Typography>
+                              <Typography variant="body2" color="text.secondary">Утилизация</Typography>
                               <Typography variant="body2" fontWeight={700}>{fill}%</Typography>
                             </Stack>
                             <LinearProgress
@@ -908,6 +931,55 @@ const EmployeesTab = ({ orgId, opsDynamics }) => {
   );
 };
 
+const STORAGE_CONDITION_LABEL = {
+  ROOM: 'Комнатная (15…25°C)',
+  COOL: 'Прохладный (5…15°C)',
+  FRIDGE: 'Холодильник (0…5°C)',
+  FREEZER: 'Морозильник (-18…-24°C)',
+};
+
+const RACK_KIND_LABEL = {
+  SHELF: 'Полочный',
+  CELL: 'Ячеистый',
+  PALLET: 'Паллетный',
+};
+
+const RackStructureBlock = ({ structure }) => {
+  if (!structure) return null;
+  const racksByKind = structure.racksByKind || {};
+  const racksByConditions = structure.racksByStorageConditions || {};
+  const kindEntries = Object.entries(racksByKind).filter(([, v]) => v > 0);
+  const condEntries = Object.entries(racksByConditions).filter(([, v]) => v > 0);
+
+  return (
+    <Box sx={{ mt: 2 }}>
+      {kindEntries.length > 0 && (
+        <Box sx={{ mb: 1 }}>
+          <Typography variant="caption" color="text.secondary">Типы стеллажей</Typography>
+          <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 0.5 }}>
+            {kindEntries.map(([k, v]) => (
+              <Chip key={k} size="small" variant="outlined"
+                    label={`${RACK_KIND_LABEL[k] || k}: ${v}`} sx={{ mb: 0.5 }} />
+            ))}
+          </Stack>
+        </Box>
+      )}
+      {condEntries.length > 0 && (
+        <Box>
+          <Typography variant="caption" color="text.secondary">Температурные зоны</Typography>
+          <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 0.5 }}>
+            {condEntries.map(([c, v]) => (
+              <Chip key={c} size="small"
+                    color={c === 'FRIDGE' || c === 'FREEZER' ? 'info' : 'default'}
+                    label={`${STORAGE_CONDITION_LABEL[c] || c}: ${v}`} sx={{ mb: 0.5 }} />
+            ))}
+          </Stack>
+        </Box>
+      )}
+    </Box>
+  );
+};
+
 const WarehousesTab = ({ warehousesSummary, loading }) => {
   const warehousesList = useMemo(() => {
     if (!warehousesSummary) return null;
@@ -916,6 +988,21 @@ const WarehousesTab = ({ warehousesSummary, loading }) => {
     return null;
   }, [warehousesSummary]);
 
+  const aggregated = useMemo(() => {
+    if (!warehousesList) return null;
+    const total = warehousesList.reduce((acc, w) => {
+      const s = w.structure || {};
+      acc.racks += Number(s.racksCount || 0);
+      acc.totalSlots += Number(s.totalSlots || 0);
+      acc.occupiedSlots += Number(s.occupiedSlots || 0);
+      return acc;
+    }, { racks: 0, totalSlots: 0, occupiedSlots: 0 });
+    total.utilizationPercent = total.totalSlots > 0
+      ? Math.round((total.occupiedSlots / total.totalSlots) * 1000) / 10
+      : 0;
+    return total;
+  }, [warehousesList]);
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h6" fontWeight={600} mb={2}>Детализация по складам</Typography>
@@ -923,73 +1010,108 @@ const WarehousesTab = ({ warehousesSummary, loading }) => {
         <Grid container spacing={2}>
           {[0, 1, 2, 3].map((i) => (
             <Grid size={{ xs: 12, md: 6 }} key={i}>
-              <Skeleton variant="rounded" height={220} />
+              <Skeleton variant="rounded" height={260} />
             </Grid>
           ))}
         </Grid>
       ) : !warehousesList || warehousesList.length === 0 ? (
         <EmptyState icon={WarehouseIcon} title="Нет складов" />
       ) : (
-        <Grid container spacing={2}>
-          {warehousesList.map((w, i) => {
-            const fill = Number(w.fillPercentage ?? w.utilization ?? 0);
-            const id = w.warehouseId || w.id || i;
-            return (
-              <Grid size={{ xs: 12, md: 6 }} key={id}>
-                <Card variant="outlined" sx={{ borderRadius: 3 }}>
-                  <CardContent>
-                    <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
-                      <Box sx={{ bgcolor: '#e3f2fd', color: '#1976d2', p: 1, borderRadius: 2, display: 'inline-flex' }}>
-                        <WarehouseIcon />
-                      </Box>
-                      <Stack flex={1} minWidth={0}>
-                        <Typography variant="subtitle1" fontWeight={700} noWrap>{w.name || '—'}</Typography>
-                        {w.address && (
-                          <Typography variant="caption" color="text.secondary" noWrap>{w.address}</Typography>
-                        )}
+        <>
+          {aggregated && (
+            <Card variant="outlined" sx={{ borderRadius: 3, mb: 3, bgcolor: '#f5f7fa' }}>
+              <CardContent>
+                <Typography variant="subtitle2" color="text.secondary" mb={1}>
+                  Сводка по сети складов
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 6, md: 3 }}>
+                    <Typography variant="caption" color="text.secondary">Складов</Typography>
+                    <Typography variant="h6" fontWeight={700}>{warehousesList.length}</Typography>
+                  </Grid>
+                  <Grid size={{ xs: 6, md: 3 }}>
+                    <Typography variant="caption" color="text.secondary">Стеллажей</Typography>
+                    <Typography variant="h6" fontWeight={700}>{aggregated.racks}</Typography>
+                  </Grid>
+                  <Grid size={{ xs: 6, md: 3 }}>
+                    <Typography variant="caption" color="text.secondary">Ячеек занято</Typography>
+                    <Typography variant="h6" fontWeight={700}>
+                      {aggregated.occupiedSlots} / {aggregated.totalSlots}
+                    </Typography>
+                  </Grid>
+                  <Grid size={{ xs: 6, md: 3 }}>
+                    <Typography variant="caption" color="text.secondary">Утилизация</Typography>
+                    <Typography variant="h6" fontWeight={700}>{aggregated.utilizationPercent}%</Typography>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          )}
+          <Grid container spacing={2}>
+            {warehousesList.map((w, i) => {
+              const structure = w.structure || {};
+              const fill = Number(structure.utilizationPercent ?? w.fillPercentage ?? w.utilization ?? 0);
+              const occupied = structure.occupiedSlots ?? w.occupiedCells ?? w.usedCells;
+              const total = structure.totalSlots ?? w.totalCells;
+              const racksCount = structure.racksCount ?? w.racksCount;
+              const id = w.warehouseId || w.id || i;
+              return (
+                <Grid size={{ xs: 12, md: 6 }} key={id}>
+                  <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                    <CardContent>
+                      <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
+                        <Box sx={{ bgcolor: '#e3f2fd', color: '#1976d2', p: 1, borderRadius: 2, display: 'inline-flex' }}>
+                          <WarehouseIcon />
+                        </Box>
+                        <Stack flex={1} minWidth={0}>
+                          <Typography variant="subtitle1" fontWeight={700} noWrap>{w.name || '—'}</Typography>
+                          {w.address && (
+                            <Typography variant="caption" color="text.secondary" noWrap>{w.address}</Typography>
+                          )}
+                        </Stack>
+                        <Chip
+                          label={`${fill}%`}
+                          size="small"
+                          color={fill > 90 ? 'error' : fill > 70 ? 'warning' : 'success'}
+                          sx={{ fontWeight: 700 }}
+                        />
                       </Stack>
-                      <Chip
-                        label={`${fill}%`}
-                        size="small"
-                        color={fill > 90 ? 'error' : fill > 70 ? 'warning' : 'success'}
-                        sx={{ fontWeight: 700 }}
-                      />
-                    </Stack>
-                    <Box mb={2}>
-                      <LinearProgress
-                        variant="determinate"
-                        value={Math.min(fill, 100)}
-                        sx={{ height: 10, borderRadius: 1 }}
-                        color={fill > 90 ? 'error' : fill > 70 ? 'warning' : 'primary'}
-                      />
-                    </Box>
-                    <Grid container spacing={1.5}>
-                      <Grid size={{ xs: 6 }}>
-                        <Typography variant="caption" color="text.secondary">Уникальных товаров</Typography>
-                        <Typography variant="body2" fontWeight={700}>{w.uniqueProducts ?? '—'}</Typography>
+                      <Box mb={2}>
+                        <LinearProgress
+                          variant="determinate"
+                          value={Math.min(fill, 100)}
+                          sx={{ height: 10, borderRadius: 1 }}
+                          color={fill > 90 ? 'error' : fill > 70 ? 'warning' : 'primary'}
+                        />
+                      </Box>
+                      <Grid container spacing={1.5}>
+                        <Grid size={{ xs: 6 }}>
+                          <Typography variant="caption" color="text.secondary">Стеллажей</Typography>
+                          <Typography variant="body2" fontWeight={700}>{racksCount ?? '—'}</Typography>
+                        </Grid>
+                        <Grid size={{ xs: 6 }}>
+                          <Typography variant="caption" color="text.secondary">Ячеек занято</Typography>
+                          <Typography variant="body2" fontWeight={700}>
+                            {occupied ?? '—'}{total != null && ` / ${total}`}
+                          </Typography>
+                        </Grid>
+                        <Grid size={{ xs: 6 }}>
+                          <Typography variant="caption" color="text.secondary">Уникальных товаров</Typography>
+                          <Typography variant="body2" fontWeight={700}>{w.uniqueProducts ?? '—'}</Typography>
+                        </Grid>
+                        <Grid size={{ xs: 6 }}>
+                          <Typography variant="caption" color="text.secondary">Операций · месяц</Typography>
+                          <Typography variant="body2" fontWeight={700}>{w.monthlyOperations ?? w.operationsLast30Days ?? '—'}</Typography>
+                        </Grid>
                       </Grid>
-                      <Grid size={{ xs: 6 }}>
-                        <Typography variant="caption" color="text.secondary">Общий объём</Typography>
-                        <Typography variant="body2" fontWeight={700}>{w.totalQuantity ?? '—'}</Typography>
-                      </Grid>
-                      <Grid size={{ xs: 6 }}>
-                        <Typography variant="caption" color="text.secondary">Занято ячеек</Typography>
-                        <Typography variant="body2" fontWeight={700}>
-                          {w.occupiedCells ?? w.usedCells ?? '—'}
-                          {w.totalCells != null && ` / ${w.totalCells}`}
-                        </Typography>
-                      </Grid>
-                      <Grid size={{ xs: 6 }}>
-                        <Typography variant="caption" color="text.secondary">Операций · месяц</Typography>
-                        <Typography variant="body2" fontWeight={700}>{w.monthlyOperations ?? w.operationsLast30Days ?? '—'}</Typography>
-                      </Grid>
-                    </Grid>
-                  </CardContent>
-                </Card>
-              </Grid>
-            );
-          })}
-        </Grid>
+                      <RackStructureBlock structure={structure} />
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
+        </>
       )}
     </Box>
   );

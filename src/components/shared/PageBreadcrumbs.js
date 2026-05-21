@@ -17,9 +17,8 @@ const ROUTE_LABELS = {
     revaluation: 'Переоценка',
     analytics: 'Аналитика',
     suppliers: 'Поставщики',
-    supplies: 'Поставки',
+    receive: 'Поставки',
     documents: 'Документы',
-    'erp-extractor': 'ERP-импорт',
 };
 
 const PageBreadcrumbs = ({ items, sx }) => {

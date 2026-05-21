@@ -27,9 +27,7 @@ import WriteoffPage from '../pages/WriteoffPage';
 import RevaluationPage from '../pages/RevaluationPage';
 import AnalyticsPage from '../pages/AnalyticsPage';
 import SuppliersPage from '../pages/SuppliersPage';
-import SuppliesPage from '../pages/SuppliesPage';
 import DocumentsPage from '../pages/DocumentsPage';
-import ErpExtractorPage from '../pages/ErpExtractorPage';
 
 
 const ProtectedRoute = ({ children }) => {
@@ -49,6 +47,18 @@ const RoleGuard = ({ allowed, children }) => {
 
   if (!user || !allowed.includes(userRole)) {
     return <Navigate to="/main" replace />;
+  }
+
+  return children;
+};
+
+
+const OrgRequiredRoute = ({ children }) => {
+  const user = useSelector(selectUser);
+  const userRole = user?.role || (Array.isArray(user?.roles) ? user.roles[0] : undefined);
+
+  if (userRole === 'DIRECTOR' && !user?.organizationId) {
+    return <Navigate to="/main/organization?firstTime=true" replace />;
   }
 
   return children;
@@ -123,7 +133,9 @@ const AppRouter = () => {
         } />
         <Route path="employees" element={
           <RoleGuard allowed={['DIRECTOR']}>
-            <EmployeesPage />
+            <OrgRequiredRoute>
+              <EmployeesPage />
+            </OrgRequiredRoute>
           </RoleGuard>
         } />
         <Route path="receive" element={
@@ -153,7 +165,9 @@ const AppRouter = () => {
         } />
         <Route path="analytics" element={
           <RoleGuard allowed={['DIRECTOR']}>
-            <AnalyticsPage />
+            <OrgRequiredRoute>
+              <AnalyticsPage />
+            </OrgRequiredRoute>
           </RoleGuard>
         } />
         <Route path="suppliers" element={
@@ -161,19 +175,11 @@ const AppRouter = () => {
             <SuppliersPage />
           </RoleGuard>
         } />
-        <Route path="supplies" element={
-          <RoleGuard allowed={['WORKER']}>
-            <SuppliesPage />
-          </RoleGuard>
-        } />
+        <Route path="supplies" element={<Navigate to="/main/receive" replace />} />
+        <Route path="erp-extractor" element={<Navigate to="/main/receive" replace />} />
         <Route path="documents" element={
           <RoleGuard allowed={['WORKER', 'ACCOUNTANT']}>
             <DocumentsPage />
-          </RoleGuard>
-        } />
-        <Route path="erp-extractor" element={
-          <RoleGuard allowed={['WORKER']}>
-            <ErpExtractorPage />
           </RoleGuard>
         } />
       </Route>

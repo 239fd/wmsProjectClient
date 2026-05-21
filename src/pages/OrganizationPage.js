@@ -3,7 +3,7 @@ import {
   Box, Typography, Paper, TextField, Button,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   Tabs, Tab, Chip, Divider, Grid, Card, CardContent, Alert,
-  CircularProgress, Stack, Collapse,
+  CircularProgress, Stack, Collapse, LinearProgress,
   MenuItem, Select, FormControl, InputLabel, FormHelperText,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Tooltip,
@@ -35,7 +35,7 @@ import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { applyServerError } from '../utils/applyServerError';
 import {
   organizationSchema, warehouseSchema, rackSchema,
-  shelfSchema, cellSchema, fridgeSchema, palletSchema,
+  shelfSchema, cellSchema, palletSchema,
 } from '../validation/schemas';
 
 const EMPTY_ORG_FORM = { name: '', shortName: '', unp: '', address: '' };
@@ -44,18 +44,16 @@ const EMPTY_WH_FORM = { name: '', address: '', responsibleUserId: '' };
 const RACK_KIND_OPTIONS = [
   { value: 'SHELF', label: 'Полочный', icon: LayersIcon },
   { value: 'CELL', label: 'Ячеистый', icon: ViewModuleIcon },
-  { value: 'FRIDGE', label: 'Холодильник', icon: AcUnitIcon },
   { value: 'PALLET', label: 'Паллетный', icon: Inventory2Icon },
 ];
 const RACK_KIND_LABEL = Object.fromEntries(RACK_KIND_OPTIONS.map((o) => [o.value, o.label]));
 const RACK_KIND_ICON = Object.fromEntries(RACK_KIND_OPTIONS.map((o) => [o.value, o.icon]));
 
 const STORAGE_CONDITION_OPTIONS = [
-  { value: '', label: '— не указано —' },
-  { value: 'AMBIENT', label: 'Обычные' },
-  { value: 'DRY', label: 'Сухое' },
-  { value: 'FRIDGE', label: 'Холодильник' },
-  { value: 'FREEZER', label: 'Морозильник' },
+  { value: 'ROOM', label: 'Комнатная температура (15…25 °C)' },
+  { value: 'COOL', label: 'Прохладный режим (5…15 °C)' },
+  { value: 'FRIDGE', label: 'Холодильник (0…5 °C)' },
+  { value: 'FREEZER', label: 'Морозильник (-18…-24 °C)' },
 ];
 
 const PALLET_TYPE_OPTIONS = [
@@ -65,12 +63,10 @@ const PALLET_TYPE_OPTIONS = [
   { value: 'ASIA', label: 'ASIA (110×110 см)' },
 ];
 
-const EMPTY_RACK_FORM = { name: '', kind: 'SHELF', storageConditions: '' };
+const EMPTY_RACK_FORM = { name: '', kind: 'SHELF', storageConditions: 'ROOM', maxWeightKg: '' };
 const EMPTY_SLOT_FORM = {
-  shelfCapacityKg: '', maxWeightKg: '',
-  minTemperatureC: '', maxTemperatureC: '',
   lengthCm: '', widthCm: '', heightCm: '',
-  palletPlaceCount: '', palletType: 'EUR',
+  palletPlaceCount: '', palletType: 'EUR', maxHeightCm: '',
   count: 1,
 };
 
@@ -78,7 +74,6 @@ const slotSchemaFor = (kind) => {
   switch (kind) {
     case 'SHELF': return shelfSchema;
     case 'CELL': return cellSchema;
-    case 'FRIDGE': return fridgeSchema;
     case 'PALLET': return palletSchema;
     default: return null;
   }
@@ -360,6 +355,9 @@ const OrganizationPage = () => {
         name: values.name.trim(),
         kind: values.kind,
         storageConditions: values.storageConditions || null,
+        maxWeightKg: values.maxWeightKg !== '' && values.maxWeightKg !== null
+          ? Number(values.maxWeightKg)
+          : null,
       });
       notify('Стеллаж создан');
       setRackDialog({ open: false, warehouseId: null });
@@ -399,24 +397,15 @@ const OrganizationPage = () => {
     let values;
     if (rack.kind === 'SHELF' || rack.kind === 'CELL') {
       values = {
-        ...(rack.kind === 'SHELF'
-          ? { shelfCapacityKg: raw.shelfCapacityKg }
-          : { maxWeightKg: raw.maxWeightKg }),
         lengthCm: raw.lengthCm,
         widthCm: raw.widthCm,
         heightCm: raw.heightCm,
       };
-    } else if (rack.kind === 'FRIDGE') {
-      values = {
-        minTemperatureC: raw.minTemperatureC,
-        maxTemperatureC: raw.maxTemperatureC,
-        lengthCm: raw.lengthCm, widthCm: raw.widthCm, heightCm: raw.heightCm,
-      };
     } else if (rack.kind === 'PALLET') {
       values = {
         palletPlaceCount: raw.palletPlaceCount,
-        maxWeightKg: raw.maxWeightKg,
         palletType: raw.palletType,
+        maxHeightCm: raw.maxHeightCm,
       };
     } else {
       return;
@@ -452,8 +441,6 @@ const OrganizationPage = () => {
           await warehouseService.addShelf(rack.rackId, validated);
         } else if (rack.kind === 'CELL') {
           await warehouseService.addCell(rack.rackId, validated);
-        } else if (rack.kind === 'FRIDGE') {
-          await warehouseService.addFridge(rack.rackId, validated);
         } else if (rack.kind === 'PALLET') {
           await warehouseService.addPallet(rack.rackId, validated);
         }
@@ -782,7 +769,7 @@ const OrganizationPage = () => {
                                                               Слотов пока нет
                                                             </Typography>
                                                           ) : (
-                                                            <RackSlotsTable kind={slotsData.kind} slots={slotsData.slots} />
+                                                            <RackSlotsTable kind={slotsData.kind} slots={slotsData.slots} rack={rack} />
                                                           )}
                                                         </Box>
                                                       </Collapse>
@@ -954,15 +941,28 @@ const OrganizationPage = () => {
                   name="storageConditions"
                   control={rackForm.control}
                   render={({ field }) => (
-                    <FormControl fullWidth>
+                    <FormControl fullWidth error={!!rackForm.formState.errors.storageConditions}>
                       <InputLabel>Условия хранения</InputLabel>
                       <Select {...field} label="Условия хранения" variant="outlined" disabled={rackBusy}>
                         {STORAGE_CONDITION_OPTIONS.map((opt) => (
                           <MenuItem key={opt.value || 'none'} value={opt.value}>{opt.label}</MenuItem>
                         ))}
                       </Select>
+                      {rackForm.formState.errors.storageConditions && (
+                        <FormHelperText>{rackForm.formState.errors.storageConditions.message}</FormHelperText>
+                      )}
                     </FormControl>
                   )}
+                />
+                <TextField
+                  label="Грузоподъёмность всего стеллажа (кг)"
+                  type="number"
+                  fullWidth
+                  disabled={rackBusy}
+                  helperText={rackForm.formState.errors.maxWeightKg?.message
+                    || 'Общий лимит веса на стеллаж; слоты добавляются без собственного лимита'}
+                  error={!!rackForm.formState.errors.maxWeightKg}
+                  {...rackForm.register('maxWeightKg')}
                 />
               </Stack>
             </DialogContent>
@@ -1001,51 +1001,12 @@ const OrganizationPage = () => {
           <form onSubmit={slotForm.handleSubmit(onSlotSave)} noValidate>
             <DialogContent>
               <Stack spacing={2} mt={1}>
-                {slotDialog.rack?.kind === 'SHELF' && (
-                  <TextField
-                    label="Грузоподъёмность, кг"
-                    type="number"
-                    fullWidth
-                    disabled={slotBusy}
-                    {...slotForm.register('shelfCapacityKg')}
-                    error={!!slotForm.formState.errors.shelfCapacityKg}
-                    helperText={slotForm.formState.errors.shelfCapacityKg?.message}
-                  />
-                )}
-
-                {slotDialog.rack?.kind === 'CELL' && (
-                  <TextField
-                    label="Макс. вес, кг"
-                    type="number"
-                    fullWidth
-                    disabled={slotBusy}
-                    {...slotForm.register('maxWeightKg')}
-                    error={!!slotForm.formState.errors.maxWeightKg}
-                    helperText={slotForm.formState.errors.maxWeightKg?.message}
-                  />
-                )}
-
-                {slotDialog.rack?.kind === 'FRIDGE' && (
-                  <Stack direction="row" spacing={2}>
-                    <TextField
-                      label="Темп. min, °C"
-                      type="number"
-                      fullWidth
-                      disabled={slotBusy}
-                      {...slotForm.register('minTemperatureC')}
-                      error={!!slotForm.formState.errors.minTemperatureC}
-                      helperText={slotForm.formState.errors.minTemperatureC?.message}
-                    />
-                    <TextField
-                      label="Темп. max, °C"
-                      type="number"
-                      fullWidth
-                      disabled={slotBusy}
-                      {...slotForm.register('maxTemperatureC')}
-                      error={!!slotForm.formState.errors.maxTemperatureC}
-                      helperText={slotForm.formState.errors.maxTemperatureC?.message}
-                    />
-                  </Stack>
+                {(slotDialog.rack?.kind === 'SHELF' || slotDialog.rack?.kind === 'CELL'
+                  || slotDialog.rack?.kind === 'PALLET') && (
+                  <Alert severity="info" sx={{ borderRadius: 1 }}>
+                    Грузоподъёмность задана на уровне стеллажа: <b>{slotDialog.rack?.maxWeightKg ?? '—'} кг</b>.
+                    Для каждого слота вводятся только габариты{slotDialog.rack?.kind === 'PALLET' ? ', количество паллетомест и высота слота' : ''}.
+                  </Alert>
                 )}
 
                 {slotDialog.rack?.kind === 'PALLET' ? (
@@ -1058,15 +1019,6 @@ const OrganizationPage = () => {
                       {...slotForm.register('palletPlaceCount')}
                       error={!!slotForm.formState.errors.palletPlaceCount}
                       helperText={slotForm.formState.errors.palletPlaceCount?.message}
-                    />
-                    <TextField
-                      label="Макс. вес, кг"
-                      type="number"
-                      fullWidth
-                      disabled={slotBusy}
-                      {...slotForm.register('maxWeightKg')}
-                      error={!!slotForm.formState.errors.maxWeightKg}
-                      helperText={slotForm.formState.errors.maxWeightKg?.message}
                     />
                     <Controller
                       name="palletType"
@@ -1081,6 +1033,16 @@ const OrganizationPage = () => {
                           </Select>
                         </FormControl>
                       )}
+                    />
+                    <TextField
+                      label="Высота слота, см"
+                      type="number"
+                      fullWidth
+                      disabled={slotBusy}
+                      {...slotForm.register('maxHeightCm')}
+                      error={!!slotForm.formState.errors.maxHeightCm}
+                      helperText={slotForm.formState.errors.maxHeightCm?.message
+                        || 'Максимальная высота паллета, помещающегося на слот'}
                     />
                   </>
                 ) : (
@@ -1144,98 +1106,152 @@ const OrganizationPage = () => {
   );
 };
 
-const RackSlotsTable = ({ kind, slots }) => {
+const SlotStatusChip = ({ slot }) => {
+  const occupied = slot?.occupied === true;
+  return (
+    <Chip
+      size="small"
+      color={occupied ? 'warning' : 'success'}
+      label={occupied ? 'Занята' : 'Доступна'}
+      sx={{ minWidth: 92 }}
+    />
+  );
+};
+
+const SlotLoadCell = ({ slot, capacityKg }) => {
+  const itemsCount = slot?.itemsCount ?? 0;
+  const totalQuantity = slot?.totalQuantity ?? 0;
+  const cap = capacityKg ? Number(capacityKg) : null;
+  const used = Number(totalQuantity) || 0;
+  const percent = cap && cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : null;
+
+  return (
+    <Box sx={{ minWidth: 140 }}>
+      <Typography variant="caption" color="text.secondary" display="block">
+        {itemsCount > 0 ? `${itemsCount} позиций · ${used}` : 'Пусто'}
+        {cap ? ` / ${cap} кг` : ''}
+      </Typography>
+      {percent !== null && (
+        <LinearProgress
+          variant="determinate"
+          value={percent}
+          sx={{ mt: 0.5, height: 4, borderRadius: 1 }}
+          color={percent >= 90 ? 'error' : percent >= 60 ? 'warning' : 'success'}
+        />
+      )}
+    </Box>
+  );
+};
+
+const RackSlotsTable = ({ kind, slots, rack }) => {
   const dims = (s) => `${s.lengthCm ?? '—'}×${s.widthCm ?? '—'}×${s.heightCm ?? '—'}`;
+  const rackCapacityKg = rack?.maxWeightKg ?? null;
 
   if (kind === 'SHELF') {
+    const occupiedCount = slots.filter((s) => s.occupied).length;
     return (
-      <Table size="small" sx={{ bgcolor: 'background.default' }}>
-        <TableHead>
-          <TableRow>
-            <TableCell sx={{ width: 60 }}>№</TableCell>
-            <TableCell align="right">Грузоподъёмность, кг</TableCell>
-            <TableCell>Габариты Д×Ш×В, см</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {slots.map((s, i) => (
-            <TableRow key={s.shelfId || i}>
-              <TableCell>{i + 1}</TableCell>
-              <TableCell align="right">{s.shelfCapacityKg ?? '—'}</TableCell>
-              <TableCell>{dims(s)}</TableCell>
+      <>
+        {rackCapacityKg != null && (
+          <Box sx={{ mb: 1, px: 1 }}>
+            <Typography variant="caption" color="text.secondary">
+              Грузоподъёмность стеллажа: <b>{rackCapacityKg} кг</b> · занято полок: <b>{occupiedCount}/{slots.length}</b>
+            </Typography>
+          </Box>
+        )}
+        <Table size="small" sx={{ bgcolor: 'background.default' }}>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ width: 60 }}>№</TableCell>
+              <TableCell>Статус</TableCell>
+              <TableCell>Загрузка</TableCell>
+              <TableCell>Габариты Д×Ш×В, см</TableCell>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHead>
+          <TableBody>
+            {slots.map((s, i) => (
+              <TableRow key={s.shelfId || s.id || i}>
+                <TableCell>{i + 1}</TableCell>
+                <TableCell><SlotStatusChip slot={s} /></TableCell>
+                <TableCell><SlotLoadCell slot={s} capacityKg={null} /></TableCell>
+                <TableCell>{dims(s)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </>
     );
   }
 
   if (kind === 'CELL') {
+    const totalLoad = slots.reduce((acc, s) => acc + Number(s.totalQuantity || 0), 0);
+    const occupiedCount = slots.filter((s) => s.occupied).length;
     return (
-      <Table size="small" sx={{ bgcolor: 'background.default' }}>
-        <TableHead>
-          <TableRow>
-            <TableCell sx={{ width: 60 }}>№</TableCell>
-            <TableCell align="right">Макс. вес, кг</TableCell>
-            <TableCell>Габариты Д×Ш×В, см</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {slots.map((s, i) => (
-            <TableRow key={s.cellId || i}>
-              <TableCell>{i + 1}</TableCell>
-              <TableCell align="right">{s.maxWeightKg ?? '—'}</TableCell>
-              <TableCell>{dims(s)}</TableCell>
+      <>
+        {rackCapacityKg != null && (
+          <Box sx={{ mb: 1, px: 1 }}>
+            <Typography variant="caption" color="text.secondary">
+              Грузоподъёмность стеллажа: <b>{rackCapacityKg} кг</b> ·
+              {' '}занято ячеек: <b>{occupiedCount}/{slots.length}</b> ·
+              {' '}суммарно: <b>{totalLoad}</b>
+            </Typography>
+          </Box>
+        )}
+        <Table size="small" sx={{ bgcolor: 'background.default' }}>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ width: 60 }}>№</TableCell>
+              <TableCell>Статус</TableCell>
+              <TableCell>Загрузка</TableCell>
+              <TableCell>Габариты Д×Ш×В, см</TableCell>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    );
-  }
-
-  if (kind === 'FRIDGE') {
-    return (
-      <Table size="small" sx={{ bgcolor: 'background.default' }}>
-        <TableHead>
-          <TableRow>
-            <TableCell sx={{ width: 60 }}>№</TableCell>
-            <TableCell align="right">Темп. min, °C</TableCell>
-            <TableCell align="right">Темп. max, °C</TableCell>
-            <TableCell>Габариты Д×Ш×В, см</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {slots.map((s, i) => (
-            <TableRow key={s.fridgeId || s.cellId || i}>
-              <TableCell>{i + 1}</TableCell>
-              <TableCell align="right">{s.minTemperatureC ?? '—'}</TableCell>
-              <TableCell align="right">{s.maxTemperatureC ?? '—'}</TableCell>
-              <TableCell>{dims(s)}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHead>
+          <TableBody>
+            {slots.map((s, i) => (
+              <TableRow key={s.cellId || s.id || i}>
+                <TableCell>{i + 1}</TableCell>
+                <TableCell><SlotStatusChip slot={s} /></TableCell>
+                <TableCell><SlotLoadCell slot={s} capacityKg={null} /></TableCell>
+                <TableCell>{dims(s)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </>
     );
   }
 
   if (kind === 'PALLET') {
+    const occupiedCount = slots.filter((s) => s.occupied).length;
     return (
-      <Table size="small" sx={{ bgcolor: 'background.default' }}>
-        <TableHead>
-          <TableRow>
-            <TableCell sx={{ width: 60 }}>№</TableCell>
-            <TableCell>Габариты Д×Ш×В, см</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {slots.map((s, i) => (
-            <TableRow key={s.placeId || i}>
-              <TableCell>{i + 1}</TableCell>
-              <TableCell>{dims(s)}</TableCell>
+      <>
+        {rackCapacityKg != null && (
+          <Box sx={{ mb: 1, px: 1 }}>
+            <Typography variant="caption" color="text.secondary">
+              Грузоподъёмность стеллажа: <b>{rackCapacityKg} кг</b> · занято паллетомест: <b>{occupiedCount}/{slots.length}</b>
+            </Typography>
+          </Box>
+        )}
+        <Table size="small" sx={{ bgcolor: 'background.default' }}>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ width: 60 }}>№</TableCell>
+              <TableCell>Статус</TableCell>
+              <TableCell>Загрузка</TableCell>
+              <TableCell>Габариты Д×Ш×В, см</TableCell>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHead>
+          <TableBody>
+            {slots.map((s, i) => (
+              <TableRow key={s.placeId || s.id || i}>
+                <TableCell>{i + 1}</TableCell>
+                <TableCell><SlotStatusChip slot={s} /></TableCell>
+                <TableCell><SlotLoadCell slot={s} capacityKg={null} /></TableCell>
+                <TableCell>{dims(s)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </>
     );
   }
 

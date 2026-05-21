@@ -60,11 +60,6 @@ const warehouseService = {
     return httpService.post(API_ENDPOINTS.RACKS.CELLS(rackId), { rackId, ...payload });
   },
 
-  async addFridge(rackId, payload) {
-
-    return httpService.post(API_ENDPOINTS.RACKS.FRIDGES(rackId), { rackId, ...payload });
-  },
-
   async addPallet(rackId, payload) {
 
     return httpService.post(API_ENDPOINTS.RACKS.PALLETS(rackId), { rackId, ...payload });
