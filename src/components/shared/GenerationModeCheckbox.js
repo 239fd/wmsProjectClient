@@ -36,6 +36,11 @@ export default function GenerationModeCheckbox({ value, onChange, disabled = fal
 
   const handleChange = (e) => {
     const next = e.target.checked ? 'rpa' : 'auto';
+    try {
+      localStorage.setItem('generationMode', next);
+    } catch (err) {
+
+    }
     if (onChange) onChange(next);
     if (value === undefined) setInternal(next);
   };

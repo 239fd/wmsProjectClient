@@ -17,6 +17,8 @@ import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
 import DocumentDownloadButton from '../components/shared/DocumentDownloadButton';
 import { writeOffSchema } from '../validation/schemas';
+import { enumLabel } from '../utils/enumLabels';
+import GenerationModeCheckbox from '../components/shared/GenerationModeCheckbox';
 
 const REASONS = [
   { value: 'DAMAGE', label: 'Порча' },
@@ -361,7 +363,7 @@ const WriteoffPage = () => {
                         <MenuItem value="">— не назначен —</MenuItem>
                         {employees.map((emp) => (
                           <MenuItem key={emp.userId} value={emp.userId}>
-                            {emp.username || emp.email} · {emp.role}
+                            {emp.username || emp.email} · {enumLabel('UserRole', emp.role)}
                           </MenuItem>
                         ))}
                       </Select>
@@ -384,7 +386,7 @@ const WriteoffPage = () => {
                       >
                         {employees.map((emp) => (
                           <MenuItem key={emp.userId} value={emp.userId}>
-                            {emp.username || emp.email} · {emp.role}
+                            {emp.username || emp.email} · {enumLabel('UserRole', emp.role)}
                           </MenuItem>
                         ))}
                       </Select>
@@ -401,9 +403,10 @@ const WriteoffPage = () => {
                   error={!!errors.notes}
                   helperText={errors.notes?.message}
                 />
+                <GenerationModeCheckbox />
                 <Alert severity="warning">
-                  Списание необратимо. Будет сформирован акт; скачать его можно будет
-                  в разделе «Документы» (в следующей итерации).
+                  Списание необратимо. Будет сформирован акт (СПС); скачать его можно
+                  в разделе «Документы».
                 </Alert>
               </Stack>
             </DialogContent>

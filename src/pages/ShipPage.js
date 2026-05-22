@@ -51,9 +51,17 @@ const EXPORT_CURRENCIES = [
 ];
 
 const ITEM_STATUS = {
-  PENDING:   { label: 'Ожидает',  color: 'default' },
-  PICKING:   { label: 'Подбор',   color: 'warning' },
-  PICKED:    { label: 'Подобран', color: 'success' },
+  PENDING:   { label: 'Ожидает',     color: 'default' },
+  PICKING:   { label: 'Подбор',      color: 'warning' },
+  PARTIAL:   { label: 'Частично',    color: 'warning' },
+  PICKED:    { label: 'Подобран',    color: 'success' },
+};
+
+const formatBatch = (item) => {
+  const parts = [];
+  if (item.batchNumber) parts.push(`№ ${item.batchNumber}`);
+  if (item.expiryDate) parts.push(`до ${item.expiryDate}`);
+  return parts.length ? parts.join(' · ') : '—';
 };
 
 const formatDate = (iso) => iso ? new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
@@ -81,6 +89,8 @@ const ShipPage = () => {
   const [pickFormByItem, setPickFormByItem] = useState({});
 
   const [confirm, setConfirm] = useState({ open: false, action: null });
+  const [scanSku, setScanSku] = useState('');
+  const [scanBusy, setScanBusy] = useState(false);
   const [genMode, setGenMode] = useState(
     () => (localStorage.getItem('generationMode') === 'rpa' ? 'rpa' : 'auto'),
   );
@@ -188,6 +198,26 @@ const ShipPage = () => {
       notify(err.message || 'Не удалось завершить заявку', 'error');
     } finally {
       setDetailBusy(false);
+    }
+  };
+
+  const handleScan = async () => {
+    const sku = scanSku.trim();
+    if (!sku) {
+      notify('Введите/просканируйте SKU', 'warning');
+      return;
+    }
+    setScanBusy(true);
+    try {
+      await shipRequestService.pick(detailRequest.requestId, { unitSku: sku, qty: 1 });
+      notify(`Зафиксирована 1 единица для ${sku}`);
+      setScanSku('');
+      await loadDetail(detailRequest.requestId);
+      await loadAll();
+    } catch (err) {
+      notify(err.message || 'Не удалось зафиксировать сканирование', 'error');
+    } finally {
+      setScanBusy(false);
     }
   };
 
@@ -426,6 +456,39 @@ const ShipPage = () => {
 
                 <Typography variant="subtitle1" fontWeight={700} mb={1}>Позиции</Typography>
 
+                {(detailRequest.status === 'PICKING' || detailRequest.status === 'PLANNED')
+                  && (detailRequest.items || []).length > 0 && (
+                  <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: '#fafbfc' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                      Сканер: введите/просканируйте SKU единицы (Enter — +1 к подбору)
+                    </Typography>
+                    <Stack direction="row" spacing={1}>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        placeholder="SKU/штрихкод"
+                        value={scanSku}
+                        onChange={(e) => setScanSku(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleScan();
+                          }
+                        }}
+                        disabled={scanBusy}
+                        autoFocus
+                      />
+                      <Button
+                        variant="contained"
+                        onClick={handleScan}
+                        disabled={scanBusy || !scanSku.trim()}
+                      >
+                        +1
+                      </Button>
+                    </Stack>
+                  </Paper>
+                )}
+
                 {(detailRequest.items || []).length === 0 ? (
                   <EmptyState title="Позиций нет" sx={{ py: 2 }} />
                 ) : (
@@ -434,12 +497,14 @@ const ShipPage = () => {
                       <TableHead>
                         <TableRow>
                           <TableCell>Товар</TableCell>
-                          <TableCell>SKU</TableCell>
+                          <TableCell>Партия</TableCell>
+                          <TableCell>Ячейка</TableCell>
+                          <TableCell>SKU единицы</TableCell>
                           <TableCell align="right">План</TableCell>
                           <TableCell align="right">Подобрано</TableCell>
                           <TableCell>Статус</TableCell>
                           {(detailRequest.status === 'PICKING' || detailRequest.status === 'PLANNED') && (
-                            <TableCell align="right" sx={{ minWidth: 280 }}>Подбор</TableCell>
+                            <TableCell align="right" sx={{ minWidth: 200 }}>Подбор</TableCell>
                           )}
                         </TableRow>
                       </TableHead>
@@ -456,9 +521,24 @@ const ShipPage = () => {
                                 <Typography variant="body2">
                                   {item.productName || String(item.productId).slice(0, 8) + '…'}
                                 </Typography>
+                                {item.productSku && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    SKU: {item.productSku}
+                                  </Typography>
+                                )}
                               </TableCell>
                               <TableCell>
-                                <Typography variant="caption">{item.unitSku || '—'}</Typography>
+                                <Typography variant="caption">{formatBatch(item)}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                                  {item.cellId ? String(item.cellId).slice(0, 8) + '…' : '—'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                                  {item.unitSku || '—'}
+                                </Typography>
                               </TableCell>
                               <TableCell align="right">{expected}</TableCell>
                               <TableCell align="right">
@@ -478,22 +558,12 @@ const ShipPage = () => {
                                   <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
                                     <TextField
                                       size="small"
-                                      placeholder="SKU единицы"
-                                      value={f.unitSku}
-                                      onChange={(e) => setPickFormByItem((p) => ({
-                                        ...p,
-                                        [item.itemId]: { ...p[item.itemId], unitSku: e.target.value },
-                                      }))}
-                                      sx={{ width: 110 }}
-                                    />
-                                    <TextField
-                                      size="small"
                                       type="number"
                                       placeholder="Кол-во"
                                       value={f.qty}
                                       onChange={(e) => setPickFormByItem((p) => ({
                                         ...p,
-                                        [item.itemId]: { ...p[item.itemId], qty: e.target.value },
+                                        [item.itemId]: { ...p[item.itemId], qty: e.target.value, unitSku: item.unitSku },
                                       }))}
                                       sx={{ width: 90 }}
                                       inputProps={{ step: '0.01', min: '0', max: remaining }}

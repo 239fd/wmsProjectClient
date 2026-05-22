@@ -27,6 +27,7 @@ import EmptyState from '../components/shared/EmptyState';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { inventoryStartSchema, inventoryRecordSchema } from '../validation/schemas';
 import { enumLabel, enumColor } from '../utils/enumLabels';
+import GenerationModeCheckbox from '../components/shared/GenerationModeCheckbox';
 
 const STATUS_LABEL = {
   ACTIVE: { label: 'Активна', color: 'success' },
@@ -59,14 +60,9 @@ const InventoryPage = () => {
     mode: 'onTouched',
   });
 
-  const [products, setProducts] = useState([]);
-  const [productSearchBusy, setProductSearchBusy] = useState(false);
   const [recordBusy, setRecordBusy] = useState(false);
-  const recordForm = useForm({
-    resolver: yupResolver(inventoryRecordSchema),
-    defaultValues: EMPTY_RECORD,
-    mode: 'onTouched',
-  });
+  const [inlineEdits, setInlineEdits] = useState({});
+  const [rowBusyId, setRowBusyId] = useState(null);
 
   const [confirm, setConfirm] = useState({ open: false, action: null });
 
@@ -130,37 +126,43 @@ const InventoryPage = () => {
     }
   };
 
-  const handleProductSearch = async (query) => {
-    if (!query || query.length < 2) return;
-    setProductSearchBusy(true);
-    try {
-      const res = await productService.searchProducts(query);
-      const list = Array.isArray(res) ? res : (res?.content || []);
-      setProducts(list);
-    } catch (err) {
-
-    } finally {
-      setProductSearchBusy(false);
+  const onSaveRow = async (rec) => {
+    const raw = inlineEdits[rec.countId];
+    if (raw == null || raw === '') {
+      notify('Введите фактическое количество', 'warning');
+      return;
     }
-  };
-
-  const onRecord = async (values) => {
-    setRecordBusy(true);
+    const qty = Number(raw);
+    if (Number.isNaN(qty) || qty < 0) {
+      notify('Количество — число ≥ 0', 'warning');
+      return;
+    }
+    setRowBusyId(rec.countId);
     try {
       await productService.recordInventoryCount(session.sessionId, {
-        productId: values.productId,
-        cellId: values.cellId || null,
-        actualQuantity: values.actualQuantity,
-        notes: values.notes || null,
+        productId: rec.productId,
+        cellId: rec.cellId || null,
+        actualQuantity: qty,
+        notes: null,
       });
-      notify('Подсчёт записан');
-      recordForm.reset(EMPTY_RECORD);
+      setInlineEdits((prev) => {
+        const next = { ...prev };
+        delete next[rec.countId];
+        return next;
+      });
       await loadSession(session.sessionId);
     } catch (err) {
       notify(err.message || 'Не удалось записать подсчёт', 'error');
     } finally {
-      setRecordBusy(false);
+      setRowBusyId(null);
     }
+  };
+
+  const onFillExpected = (rec) => {
+    setInlineEdits((prev) => ({
+      ...prev,
+      [rec.countId]: String(rec.expectedQuantity ?? 0),
+    }));
   };
 
   const handleComplete = async () => {
@@ -266,7 +268,8 @@ const InventoryPage = () => {
                       {session.startedAt && <> · Начата: {new Date(session.startedAt).toLocaleString('ru-RU')}</>}
                     </Typography>
                   </Box>
-                  <Stack direction="row" spacing={1}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <GenerationModeCheckbox />
                     <Button
                       variant="contained"
                       color="success"
@@ -307,87 +310,49 @@ const InventoryPage = () => {
 
                 <Divider sx={{ my: 3 }} />
 
-                <Typography variant="h6" fontWeight={700} mb={2}>Записать подсчёт</Typography>
-
-                <form onSubmit={recordForm.handleSubmit(onRecord)} noValidate>
-                  <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, md: 5 }}>
-                      <Controller
-                        name="productId"
-                        control={recordForm.control}
-                        render={({ field, fieldState }) => (
-                          <Autocomplete
-                            options={products}
-                            getOptionLabel={(o) => `${o.name || ''} (${o.sku || ''})`}
-                            loading={productSearchBusy}
-                            onInputChange={(_, q) => handleProductSearch(q)}
-                            onChange={(_, val) => field.onChange(val?.productId || val?.id || '')}
-                            renderInput={(params) => (
-                              <TextField
-                                {...params}
-                                label="Товар"
-                                size="small"
-                                fullWidth
-                                error={!!fieldState.error}
-                                helperText={fieldState.error?.message}
-                              />
-                            )}
-                            size="small"
-                          />
-                        )}
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                      <TextField
-                        label="Cell ID (опционально)"
-                        size="small"
-                        fullWidth
-                        helperText={recordForm.formState.errors.cellId?.message || 'UUID ячейки, если применимо'}
-                        error={!!recordForm.formState.errors.cellId}
-                        {...recordForm.register('cellId')}
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 6, md: 2 }}>
-                      <TextField
-                        label="Факт. количество"
-                        type="number"
-                        size="small"
-                        fullWidth
-                        inputProps={{ step: 'any', min: '0' }}
-                        placeholder="например 12.5"
-                        {...recordForm.register('actualQuantity')}
-                        error={!!recordForm.formState.errors.actualQuantity}
-                        helperText={recordForm.formState.errors.actualQuantity?.message}
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 2 }}>
-                      <Button
-                        type="submit"
-                        variant="contained"
-                        startIcon={<AddCircleIcon />}
-                        fullWidth
-                        sx={{ height: 40 }}
-                        disabled={recordBusy}
-                      >
-                        {recordBusy ? <CircularProgress size={20} color="inherit" /> : 'Записать'}
-                      </Button>
-                    </Grid>
-                    <Grid size={12}>
-                      <TextField
-                        label="Примечание"
-                        size="small"
-                        fullWidth
-                        {...recordForm.register('notes')}
-                      />
-                    </Grid>
-                  </Grid>
-                </form>
-
-                <Divider sx={{ my: 3 }} />
-
-                <Typography variant="h6" fontWeight={700} mb={2}>
-                  Записи сессии
-                </Typography>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                  <Typography variant="h6" fontWeight={700}>
+                    Подсчёт по позициям
+                  </Typography>
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={async () => {
+                        const unfilled = (session.records || [])
+                          .filter((r) => r.actualQuantity == null);
+                        if (unfilled.length === 0) {
+                          notify('Все позиции уже заполнены', 'info');
+                          return;
+                        }
+                        setRecordBusy(true);
+                        try {
+                          for (const r of unfilled) {
+                            await productService.recordInventoryCount(session.sessionId, {
+                              productId: r.productId,
+                              cellId: r.cellId || null,
+                              actualQuantity: r.expectedQuantity ?? 0,
+                              notes: null,
+                            });
+                          }
+                          notify(`Совпадают ${unfilled.length} позиций — записаны`);
+                          await loadSession(session.sessionId);
+                        } catch (err) {
+                          notify(err.message || 'Ошибка массовой записи', 'error');
+                        } finally {
+                          setRecordBusy(false);
+                        }
+                      }}
+                      disabled={recordBusy}
+                    >
+                      Всё совпадает
+                    </Button>
+                  </Stack>
+                </Stack>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Заполните «Фактически» для каждой позиции. Расхождение в минус → пометка к списанию;
+                  в плюс → корректировка inventory. При завершении сессии будет создан inventory-report (ИНВ).
+                </Alert>
 
                 {(session.records || []).length === 0 ? (
                   <Alert severity="info">
@@ -426,15 +391,62 @@ const InventoryPage = () => {
                               <TableCell align="right">{rec.expectedQuantity ?? '—'}</TableCell>
                               <TableCell align="right">
                                 {filled ? (
-                                  <Typography
-                                    variant="body2"
-                                    fontWeight={hasDiscrepancy ? 700 : 400}
-                                    color={hasDiscrepancy ? (discrepancy < 0 ? 'error.main' : 'warning.main') : 'inherit'}
-                                  >
-                                    {rec.actualQuantity}
-                                  </Typography>
+                                  <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
+                                    <Typography
+                                      variant="body2"
+                                      fontWeight={hasDiscrepancy ? 700 : 400}
+                                      color={hasDiscrepancy ? (discrepancy < 0 ? 'error.main' : 'warning.main') : 'inherit'}
+                                    >
+                                      {rec.actualQuantity}
+                                    </Typography>
+                                    <Tooltip title="Изменить">
+                                      <Button
+                                        size="small"
+                                        variant="text"
+                                        onClick={() => setInlineEdits((p) => ({
+                                          ...p, [rec.countId]: String(rec.actualQuantity ?? '')
+                                        }))}
+                                      >
+                                        ✎
+                                      </Button>
+                                    </Tooltip>
+                                  </Stack>
                                 ) : (
-                                  <Typography variant="body2" color="text.secondary">—</Typography>
+                                  <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      placeholder="—"
+                                      value={inlineEdits[rec.countId] ?? ''}
+                                      onChange={(e) => setInlineEdits((p) => ({
+                                        ...p, [rec.countId]: e.target.value
+                                      }))}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') { e.preventDefault(); onSaveRow(rec); }
+                                      }}
+                                      inputProps={{ step: 'any', min: '0' }}
+                                      sx={{ width: 90 }}
+                                      disabled={rowBusyId === rec.countId}
+                                    />
+                                    <Tooltip title={`= ${rec.expectedQuantity ?? 0}`}>
+                                      <Button
+                                        size="small"
+                                        variant="text"
+                                        onClick={() => onFillExpected(rec)}
+                                        disabled={rowBusyId === rec.countId}
+                                      >
+                                        =
+                                      </Button>
+                                    </Tooltip>
+                                    <Button
+                                      size="small"
+                                      variant="contained"
+                                      onClick={() => onSaveRow(rec)}
+                                      disabled={rowBusyId === rec.countId || inlineEdits[rec.countId] == null}
+                                    >
+                                      {rowBusyId === rec.countId ? <CircularProgress size={16} color="inherit" /> : '✓'}
+                                    </Button>
+                                  </Stack>
                                 )}
                               </TableCell>
                               <TableCell align="right">

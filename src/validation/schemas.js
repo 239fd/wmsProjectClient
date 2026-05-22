@@ -203,9 +203,11 @@ export const supplySchema = yup.object({
 
 export const shipRequestSchema = yup.object({
     warehouseId: requiredString('Выберите склад'),
-    recipientName: optionalString(),
-    recipientAddress: optionalString(),
-    recipientInn: optionalString(),
+    recipientName: requiredString('Получатель обязателен'),
+    recipientAddress: requiredString('Адрес получателя обязателен'),
+    recipientInn: yup.string().trim()
+        .required('УНП/ИНН получателя обязателен')
+        .matches(/^\d{9}$|^\d{10}$|^\d{12}$/, 'УНП — 9 цифр (РБ) или ИНН — 10/12 цифр (РФ)'),
     plannedDate: futureOrTodayDate('Плановая дата отгрузки'),
     comment: optionalString(),
     strategy: yup.string().oneOf(['AUTO', 'FIFO', 'FEFO'], 'Выберите стратегию').required('Стратегия обязательна'),
@@ -250,10 +252,6 @@ export const productCreateSchema = yup.object({
     category: optionalString().max(100, 'Категория не более 100 символов'),
     unitOfMeasure: optionalString().max(50, 'Ед. измерения не более 50 символов'),
     description: optionalString(),
-    weightKg: yup.number().typeError('Вес — число').min(0, 'Не отрицательный').nullable()
-        .transform((v, orig) => (orig === '' || orig === null ? null : v)),
-    volumeM3: yup.number().typeError('Объём — число').min(0, 'Не отрицательный').nullable()
-        .transform((v, orig) => (orig === '' || orig === null ? null : v)),
 });
 
 export const receiveWizardSchema = yup.object({

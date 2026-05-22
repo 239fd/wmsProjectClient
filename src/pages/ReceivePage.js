@@ -682,9 +682,24 @@ const ReceivePage = () => {
                             name={`items.${i}.palletPlaceId`}
                             render={({ field }) => {
                               const itemCond = watchedItems?.[i]?.storageConditions;
+                              const pkg = watchedItems?.[i] || {};
+                              const fitsPallet = (c) => {
+                                const pL = Number(pkg.packageLengthCm) || 0;
+                                const pW = Number(pkg.packageWidthCm) || 0;
+                                const pH = Number(pkg.packageHeightCm) || 0;
+                                if (pL && pW && c.lengthCm && c.widthCm) {
+                                  const pkgArr = [pL, pW].sort((a, b) => a - b);
+                                  const celArr = [Number(c.lengthCm), Number(c.widthCm)].sort((a, b) => a - b);
+                                  if (pkgArr[0] > celArr[0] || pkgArr[1] > celArr[1]) return false;
+                                }
+                                if (pH && c.maxHeightCm && pH > Number(c.maxHeightCm)) return false;
+                                if (pH && !c.maxHeightCm && c.heightCm && pH > Number(c.heightCm)) return false;
+                                return true;
+                              };
                               const palletPlaces = cellsFlat.filter((c) => !c.occupied
                                 && c.rackKind === 'PALLET'
-                                && (!itemCond || c.rackStorageConditions === itemCond));
+                                && (!itemCond || c.rackStorageConditions === itemCond)
+                                && fitsPallet(c));
                               const selected = palletPlaces.find((c) => String(c.id) === String(field.value)) || null;
                               return (
                                 <Autocomplete
@@ -694,14 +709,16 @@ const ReceivePage = () => {
                                   value={selected}
                                   onChange={(_, val) => field.onChange(val?.id || '')}
                                   groupBy={(opt) => `${opt.rackName} · ${opt.rackStorageConditions || '—'}`}
-                                  getOptionLabel={(opt) => opt
-                                    ? `${String(opt.id).slice(0, 8)} · ${opt.lengthCm}×${opt.widthCm}см`
-                                    : ''}
+                                  getOptionLabel={(opt) => {
+                                    if (!opt) return '';
+                                    const maxH = opt.maxHeightCm ? ` · maxH ${opt.maxHeightCm}см` : '';
+                                    return `${String(opt.id).slice(0, 8)} · ${opt.lengthCm}×${opt.widthCm}см${maxH}`;
+                                  }}
                                   isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
                                   renderInput={(params) => (
                                     <TextField {...params} label="Паллет-место (упаковка PALLET)"
                                       helperText={palletPlaces.length === 0
-                                        ? 'Нет свободных паллет-мест — будет auto'
+                                        ? 'Нет паллет-мест по габаритам — будет auto'
                                         : `Доступно ${palletPlaces.length} паллет-мест`}
                                     />
                                   )}
@@ -729,10 +746,19 @@ const ReceivePage = () => {
                                   && pkgArr[1] <= celArr[1]
                                   && pkgArr[2] <= celArr[2];
                               };
+                              const fitsWeight = (c) => {
+                                const pkgWeight = Number(pkg.packageWeightKg) || 0;
+                                const packs = Number(pkg.quantityPackages) || 0;
+                                const total = pkgWeight * packs;
+                                if (!total) return true;
+                                if (!c.maxWeightKg) return true;
+                                return total <= Number(c.maxWeightKg);
+                              };
                               const matching = cellsFlat.filter((c) => !c.occupied
                                 && (!itemCond || c.rackStorageConditions === itemCond)
                                 && c.rackKind !== 'PALLET'
-                                && fitsBox(c));
+                                && fitsBox(c)
+                                && fitsWeight(c));
                               const selected = cellsFlat.find((c) => String(c.id) === String(field.value)) || null;
                               return (
                                 <Autocomplete
@@ -753,7 +779,7 @@ const ReceivePage = () => {
                                   renderInput={(params) => (
                                     <TextField {...params} label="Ячейка/полка"
                                       helperText={matching.length === 0
-                                        ? 'Нет свободных ячеек — будет auto'
+                                        ? 'Нет ячеек по габаритам/весу — будет auto'
                                         : `Доступно ${matching.length} ячеек${itemCond ? ` · ${itemCond}` : ''}`}
                                     />
                                   )}
@@ -1552,7 +1578,7 @@ const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
     resolver: yupResolver(productCreateSchema),
     defaultValues: {
       name: '', sku: '', barcode: '',
-      unitOfMeasure: 'шт', weightKg: '', volumeM3: '',
+      unitOfMeasure: 'шт',
     },
     mode: 'onTouched',
   });
@@ -1561,7 +1587,7 @@ const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
     if (open) {
       reset({
         name: '', sku: '', barcode: '',
-        unitOfMeasure: 'шт', weightKg: '', volumeM3: '',
+        unitOfMeasure: 'шт',
       });
     }
   }, [open, reset]);
@@ -1572,8 +1598,6 @@ const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
       const payload = {
         ...values,
         unitOfMeasure: values.unitOfMeasure || 'шт',
-        weightKg: values.weightKg ?? null,
-        volumeM3: values.volumeM3 ?? null,
       };
       const created = await productService.createProduct(payload);
       onCreated(created);
@@ -1629,26 +1653,6 @@ const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
               </FormControl>
             )}
           />
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-            <TextField
-              label="Вес, кг"
-              type="number"
-              fullWidth size="small"
-              inputProps={{ step: '0.001', min: '0' }}
-              {...register('weightKg')}
-              error={!!errors.weightKg}
-              helperText={errors.weightKg?.message}
-            />
-            <TextField
-              label="Объём, м³"
-              type="number"
-              fullWidth size="small"
-              inputProps={{ step: '0.0001', min: '0' }}
-              {...register('volumeM3')}
-              error={!!errors.volumeM3}
-              helperText={errors.volumeM3?.message}
-            />
-          </Stack>
         </Stack>
       </DialogContent>
       <DialogActions>

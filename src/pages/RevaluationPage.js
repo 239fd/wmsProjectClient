@@ -16,7 +16,9 @@ import { useWarehouses, useEmployees } from '../hooks';
 import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
 import DocumentDownloadButton from '../components/shared/DocumentDownloadButton';
+import GenerationModeCheckbox from '../components/shared/GenerationModeCheckbox';
 import { revaluationSchema } from '../validation/schemas';
+import { enumLabel } from '../utils/enumLabels';
 
 const REASONS = [
   'Изменение рыночной стоимости',
@@ -290,7 +292,7 @@ const RevaluationPage = () => {
                         <MenuItem value="">— не назначен —</MenuItem>
                         {employees.map((emp) => (
                           <MenuItem key={emp.userId} value={emp.userId}>
-                            {emp.username || emp.email} · {emp.role}
+                            {emp.username || emp.email} · {enumLabel('UserRole', emp.role)}
                           </MenuItem>
                         ))}
                       </Select>
@@ -313,7 +315,7 @@ const RevaluationPage = () => {
                       >
                         {employees.map((emp) => (
                           <MenuItem key={emp.userId} value={emp.userId}>
-                            {emp.username || emp.email} · {emp.role}
+                            {emp.username || emp.email} · {enumLabel('UserRole', emp.role)}
                           </MenuItem>
                         ))}
                       </Select>
@@ -330,9 +332,10 @@ const RevaluationPage = () => {
                   error={!!errors.notes}
                   helperText={errors.notes?.message}
                 />
+                <GenerationModeCheckbox />
                 <Alert severity="info" sx={{ mt: 1 }}>
-                  После переоценки автоматически генерируется акт. Скачать акт PDF можно будет
-                  в разделе «Документы» (в следующей итерации).
+                  После переоценки автоматически генерируется акт (ПЕР). Скачать акт можно
+                  в разделе «Документы».
                 </Alert>
               </Stack>
             </DialogContent>

@@ -38,15 +38,17 @@ const PERIODS = [
 ];
 
 const OP_TYPE = {
-  RECEIPT:     { label: 'Приёмка',     color: '#2e7d32' },
-  RECEIVE:     { label: 'Приёмка',     color: '#2e7d32' },
-  SHIP:        { label: 'Отгрузка',    color: '#1976d2' },
-  TRANSFER:    { label: 'Перемещение', color: '#9c27b0' },
-  WRITEOFF:    { label: 'Списание',    color: '#d32f2f' },
-  WRITE_OFF:   { label: 'Списание',    color: '#d32f2f' },
-  REVALUATION: { label: 'Переоценка',  color: '#ed6c02' },
-  RESERVE:     { label: 'Резерв',      color: '#0097a7' },
-  RELEASE:     { label: 'Освобождение',color: '#0288d1' },
+  RECEIPT:     { label: 'Приёмка',        color: '#2e7d32' },
+  RECEIVE:     { label: 'Приёмка',        color: '#2e7d32' },
+  SHIP:        { label: 'Отгрузка',       color: '#1976d2' },
+  SHIPMENT:    { label: 'Отгрузка',       color: '#1976d2' },
+  STAGING:     { label: 'Размещение',     color: '#7b1fa2' },
+  TRANSFER:    { label: 'Перемещение',    color: '#9c27b0' },
+  WRITEOFF:    { label: 'Списание',       color: '#d32f2f' },
+  WRITE_OFF:   { label: 'Списание',       color: '#d32f2f' },
+  REVALUATION: { label: 'Переоценка',     color: '#ed6c02' },
+  RESERVE:     { label: 'Резерв',         color: '#0097a7' },
+  RELEASE:     { label: 'Освобождение',   color: '#0288d1' },
   INVENTORY:   { label: 'Инвентаризация', color: '#0288d1' },
 };
 const opMeta = (key) => OP_TYPE[key] || { label: key, color: '#616161' };
