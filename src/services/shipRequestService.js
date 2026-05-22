@@ -35,6 +35,13 @@ const shipRequestService = {
   async cancel(requestId) {
     return httpService.delete(API_ENDPOINTS.OPERATIONS.SHIP_REQUEST_BY_ID(requestId));
   },
+
+  async importFrom1c({ warehouseId, userId } = {}) {
+    const headers = {};
+    if (warehouseId) headers['X-Warehouse-Id'] = String(warehouseId);
+    if (userId) headers['X-User-Id'] = String(userId);
+    return httpService.post(`${API_ENDPOINTS.OPERATIONS.SHIP_REQUESTS}/import-1c`, {}, { headers });
+  },
 };
 
 export default shipRequestService;

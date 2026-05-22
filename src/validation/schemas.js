@@ -263,12 +263,22 @@ export const receiveWizardSchema = yup.object({
     items: yup.array().of(
         yup.object({
             productId: requiredString('Выберите товар'),
-            quantity: positiveNumber('Количество > 0'),
-            pricePerUnit: positiveNumber('Цена > 0'),
+            quantityPackages: positiveNumber('Кол-во упаковок > 0'),
+            unitsPerPackage: yup.number().typeError('Шт./упак. — число').min(1, 'Минимум 1')
+                .required('Шт./упак. обязательно')
+                .transform((v, orig) => (orig === '' || orig === null ? 1 : v)),
+            pricePerUnit: nonNegativeNumber('Цена не отрицательная'),
             batchId: optionalString(),
             batchNumber: requiredString('№ партии обязателен'),
             expiryDate: requiredFutureOrTodayDate('Срок годности'),
+            packageLengthCm: positiveNumber('Длина > 0'),
+            packageWidthCm: positiveNumber('Ширина > 0'),
+            packageHeightCm: positiveNumber('Высота > 0'),
+            packageWeightKg: positiveNumber('Вес > 0'),
+            storageConditions: yup.string().oneOf(['ROOM', 'COOL', 'FRIDGE', 'FREEZER'])
+                .required('Условия хранения обязательны'),
             cellId: optionalString(),
+            palletPlaceId: optionalString(),
             notes: optionalString(),
         })
     ).min(1, 'Добавьте хотя бы один товар').required(),

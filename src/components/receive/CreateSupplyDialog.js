@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, Stack, TextField, MenuItem, Select, InputLabel, FormControl,
@@ -31,13 +31,22 @@ const STORAGE_OPTIONS = [
   { value: 'FREEZER', label: 'Морозильник' },
 ];
 
-const EMPTY_ITEM = () => ({
+let nextLocalId = 1;
+const newLocalId = () => `local-${nextLocalId++}`;
+
+const emptyItem = () => ({
+  localId: newLocalId(),
   productId: null,
   productName: '',
   sku: '',
   expectedQty: '',
   unitPrice: '',
   packagingType: 'BOX',
+  unitsPerPackage: '1',
+  packageLengthCm: '',
+  packageWidthCm: '',
+  packageHeightCm: '',
+  packageWeightKg: '',
   storageConditions: 'ROOM',
   unitOfMeasure: 'шт',
   notes: '',
@@ -48,7 +57,6 @@ const CreateSupplyDialog = ({ open, onClose, onSaved, supply = null }) => {
   const user = useSelector(selectUser);
   const { data: warehouses } = useWarehouses();
   const { data: suppliers, refresh: refreshSuppliers } = useSuppliers();
-  const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
 
   const isEdit = !!supply;
 
@@ -56,191 +64,188 @@ const CreateSupplyDialog = ({ open, onClose, onSaved, supply = null }) => {
   const [warehouseId, setWarehouseId] = useState('');
   const [warehouseOptions, setWarehouseOptions] = useState([]);
   const [supplierId, setSupplierId] = useState('');
-  const [supplierName, setSupplierName] = useState('');
+  const [supplierLabel, setSupplierLabel] = useState('');
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
   const [totalItems, setTotalItems] = useState('');
-  const [items, setItems] = useState([EMPTY_ITEM()]);
+  const [items, setItems] = useState([emptyItem()]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [productOptions, setProductOptions] = useState([]);
-  const [productSearchBusy, setProductSearchBusy] = useState(false);
-  const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
+
+  const initRef = useRef({ open: false, supplyId: null });
 
   useEffect(() => {
-    if (!open) return;
-    if (isEdit && supply) {
+    if (!open) {
+      initRef.current = { open: false, supplyId: null };
+      return;
+    }
+    const currentSupplyId = supply?.supplyId || supply?.supply_id || supply?.id || null;
+    const sameTarget = initRef.current.open && initRef.current.supplyId === currentSupplyId;
+    initRef.current = { open: true, supplyId: currentSupplyId };
+
+    if (supply) {
+      if (sameTarget) return;
       const quantityOnly = supply.quantityOnly ?? supply.quantity_only;
       setMode(quantityOnly ? 'quantity' : 'detailed');
-      const whId = supply.warehouseId || supply.warehouse_id;
+      const whId = supply.warehouseId || supply.warehouse_id || user?.warehouseId;
       setWarehouseId(whId ? String(whId) : '');
       const spId = supply.supplierId || supply.supplier_id;
       setSupplierId(spId ? String(spId) : '');
-      setSupplierName(supply.supplierName || supply.supplier_name || '');
+      setSupplierLabel(supply.supplierName || supply.supplier_name || '');
       setExpectedDate(supply.expectedDate || supply.expected_date || '');
       setNotes(supply.notes || '');
-      const totItems = supply.totalItems ?? supply.total_items;
-      setTotalItems(totItems != null ? String(totItems) : '');
+      const tot = supply.totalItems ?? supply.total_items;
+      setTotalItems(tot != null ? String(tot) : '');
+      const rawItems = Array.isArray(supply.items) ? supply.items : [];
       setItems(
-        Array.isArray(supply.items) && supply.items.length > 0
-          ? supply.items.map((it) => ({
+        rawItems.length > 0
+          ? rawItems.map((it) => ({
+              localId: newLocalId(),
               productId: it.productId || it.product_id || null,
               productName: it.productName || it.product_name || '',
               sku: it.sku || '',
-              expectedQty: (it.expectedQty ?? it.expected_qty) != null ? String(it.expectedQty ?? it.expected_qty) : '',
-              unitPrice: (it.unitPrice ?? it.unit_price) != null ? String(it.unitPrice ?? it.unit_price) : '',
+              expectedQty: (it.expectedQty ?? it.expected_qty) != null
+                ? String(it.expectedQty ?? it.expected_qty) : '',
+              unitPrice: (it.unitPrice ?? it.unit_price) != null
+                ? String(it.unitPrice ?? it.unit_price) : '',
               packagingType: it.packagingType || it.packaging_type || 'BOX',
+              unitsPerPackage: (it.unitsPerPackage ?? it.units_per_package) != null
+                ? String(it.unitsPerPackage ?? it.units_per_package) : '1',
               storageConditions: it.storageConditions || it.storage_conditions || 'ROOM',
               unitOfMeasure: it.unitOfMeasure || it.unit_of_measure || 'шт',
               notes: it.notes || '',
             }))
-          : [EMPTY_ITEM()]
+          : [emptyItem()]
       );
     } else {
-      reset();
+      const whFallback = user?.warehouseId
+        || (Array.isArray(warehouses) && warehouses[0]
+            ? (warehouses[0].warehouseId || warehouses[0].id) : null);
+      if (sameTarget) {
+        if (whFallback && !warehouseId) {
+          setWarehouseId(String(whFallback));
+        }
+        return;
+      }
+      setMode('detailed');
+      setWarehouseId(whFallback ? String(whFallback) : '');
+      setSupplierId('');
+      setSupplierLabel('');
+      setExpectedDate('');
+      setNotes('');
+      setTotalItems('');
+      setItems([emptyItem()]);
     }
-  }, [open, isEdit, supply]);
+    setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, supply, user, warehouses]);
 
   useEffect(() => {
     if (!open) return;
-    if (warehouseId) return;
-    if (user?.warehouseId) {
-      setWarehouseId(String(user.warehouseId));
-      return;
-    }
-    if (warehouses && warehouses.length > 0) {
-      setWarehouseId(String(warehouses[0].warehouseId || warehouses[0].id));
-    }
-  }, [open, user, warehouses, warehouseId]);
-
-  useEffect(() => {
-    if (!open) return;
-    let mounted = true;
-    const list = Array.isArray(warehouses) && warehouses.length > 0 ? warehouses : null;
-    if (list) {
-      setWarehouseOptions(list);
+    if (Array.isArray(warehouses) && warehouses.length > 0) {
+      setWarehouseOptions(warehouses);
       return;
     }
     if (user?.warehouseId) {
       warehouseService.getWarehouse?.(user.warehouseId)
         .then((wh) => {
-          if (mounted && wh) {
-            setWarehouseOptions([{
-              warehouseId: wh.warehouseId || wh.id,
-              name: wh.name || 'Мой склад',
-              id: wh.warehouseId || wh.id,
-            }]);
-          }
+          if (!wh) return;
+          setWarehouseOptions([{
+            warehouseId: wh.warehouseId || wh.id,
+            id: wh.warehouseId || wh.id,
+            name: wh.name || 'Мой склад',
+          }]);
         })
         .catch(() => {
-          if (mounted) setWarehouseOptions([{
+          setWarehouseOptions([{
             warehouseId: user.warehouseId,
             id: user.warehouseId,
             name: 'Мой склад',
           }]);
         });
     }
-    return () => { mounted = false; };
   }, [open, warehouses, user]);
 
-  useEffect(() => {
-    if (!productSearchQuery || productSearchQuery.length < 2) {
-      setProductOptions([]);
-      return;
-    }
-    let cancelled = false;
-    setProductSearchBusy(true);
-    const handle = setTimeout(async () => {
-      try {
-        const res = await productService.searchProducts(productSearchQuery);
-        if (!cancelled) {
-          setProductOptions(Array.isArray(res) ? res : (res?.content || []));
-        }
-      } catch {
-        if (!cancelled) setProductOptions([]);
-      } finally {
-        if (!cancelled) setProductSearchBusy(false);
-      }
-    }, 300);
-    return () => { cancelled = true; clearTimeout(handle); };
-  }, [productSearchQuery]);
+  const supplierOptions = useMemo(
+    () => (suppliers || [])
+      .filter((s) => (s.supplierId || s.id) && s.name)
+      .map((s) => ({
+        id: String(s.supplierId || s.id),
+        name: s.name,
+        unp: s.unp,
+      })),
+    [suppliers]
+  );
 
-  const reset = () => {
-    setMode('detailed');
-    setWarehouseId('');
-    setSupplierId('');
-    setSupplierName('');
-    setExpectedDate('');
-    setNotes('');
-    setTotalItems('');
-    setItems([EMPTY_ITEM()]);
-    setError(null);
-  };
+  const selectedSupplierOption = useMemo(() => {
+    if (!supplierId) return null;
+    const found = supplierOptions.find((s) => s.id === supplierId);
+    if (found) return found;
+    return supplierLabel ? { id: supplierId, name: supplierLabel, unp: null } : null;
+  }, [supplierOptions, supplierId, supplierLabel]);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (busy) return;
-    reset();
     onClose?.();
-  };
+  }, [busy, onClose]);
 
-  const updateItem = (idx, patch) => {
-    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
-  };
+  const updateItem = useCallback((localId, patch) => {
+    setItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, ...patch } : it)));
+  }, []);
 
-  const addItem = () => setItems((prev) => [...prev, EMPTY_ITEM()]);
-  const removeItem = (idx) => setItems((prev) => prev.filter((_, i) => i !== idx));
+  const addItem = useCallback(() => setItems((prev) => [...prev, emptyItem()]), []);
 
-  const validate = () => {
-    if (!warehouseId) return 'Выберите склад';
-    if (mode === 'detailed') {
-      if (!items.length) return 'Добавьте хотя бы одну позицию';
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        if (!it.productName?.trim()) return `Позиция ${i + 1}: укажите название товара`;
-        const qty = Number(it.expectedQty);
-        if (!Number.isFinite(qty) || qty <= 0) return `Позиция ${i + 1}: количество > 0`;
-      }
-    } else {
-      const n = Number(totalItems);
-      if (!Number.isFinite(n) || n <= 0) return 'Укажите плановое число позиций > 0';
-    }
-    return null;
-  };
+  const removeItem = useCallback((localId) => {
+    setItems((prev) => {
+      const next = prev.filter((it) => it.localId !== localId);
+      return next.length === 0 ? [emptyItem()] : next;
+    });
+  }, []);
 
   const handleSubmit = async () => {
-    const err = validate();
-    if (err) { setError(err); return; }
+    let storageUser = null;
+    try {
+      const raw = localStorage.getItem('user');
+      if (raw) storageUser = JSON.parse(raw);
+    } catch { /* noop */ }
+    const effectiveWarehouseId = warehouseId || user?.warehouseId || storageUser?.warehouseId || '';
+    if (!effectiveWarehouseId) { setError('Не удалось определить склад — обновите страницу или перезайдите'); return; }
+    const userId = user?.userId || storageUser?.userId;
+    if (!userId) { setError('Сессия истекла, перезайдите'); return; }
+
+    if (mode === 'detailed') {
+      if (!items.length || (items.length === 1 && !items[0].productName && !items[0].expectedQty)) {
+        setError('Добавьте хотя бы одну позицию');
+        return;
+      }
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (!it.productName?.trim()) { setError(`Позиция ${i + 1}: укажите название товара`); return; }
+        const qty = Number(it.expectedQty);
+        if (!Number.isFinite(qty) || qty <= 0) { setError(`Позиция ${i + 1}: количество > 0`); return; }
+      }
+    } else {
+      const tot = Number(totalItems);
+      if (!Number.isFinite(tot) || tot <= 0) { setError('Укажите число позиций > 0'); return; }
+    }
+
     setError(null);
     setBusy(true);
     try {
-      const finalWarehouseId = warehouseId
-        || (user?.warehouseId ? String(user.warehouseId) : '')
-        || (warehouses && warehouses[0]
-            ? String(warehouses[0].warehouseId || warehouses[0].id) : '');
-      const finalCreatedBy = user?.userId;
-      if (!finalWarehouseId) {
-        setError('Не удалось определить склад. Перезайдите в систему.');
-        setBusy(false);
-        return;
-      }
-      if (!finalCreatedBy) {
-        setError('Сессия истекла. Перезайдите в систему.');
-        setBusy(false);
-        return;
-      }
-      const selectedSupplier = (suppliers || []).find(
-        (s) => String(s.supplierId || s.id) === String(supplierId)
-      );
-      const totalItemsRaw = mode === 'quantity' ? Number(totalItems) : items.length;
+      const supplierObj = selectedSupplierOption;
+      const isValidUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || ''));
+      const cleanSupplierId = isValidUuid(supplierId) ? supplierId : null;
+      const totalItemsNum = mode === 'quantity' ? Number(totalItems) : items.length;
       const payload = {
-        supplierId: supplierId || null,
-        supplierName: selectedSupplier ? selectedSupplier.name : (supplierName || null),
-        warehouseId: finalWarehouseId,
+        supplierId: cleanSupplierId,
+        supplierName: supplierObj ? supplierObj.name : (supplierLabel || null),
+        warehouseId: effectiveWarehouseId,
         expectedDate: expectedDate || null,
         notes: notes || null,
-        createdBy: finalCreatedBy,
+        createdBy: userId,
         quantityOnly: mode === 'quantity',
-        totalItems: Number.isFinite(totalItemsRaw) && totalItemsRaw > 0 ? totalItemsRaw : null,
+        totalItems: Number.isFinite(totalItemsNum) ? totalItemsNum : 0,
         items: mode === 'quantity' ? [] : items.map((it) => ({
           productId: it.productId || null,
           productName: it.productName,
@@ -250,16 +255,22 @@ const CreateSupplyDialog = ({ open, onClose, onSaved, supply = null }) => {
           expectedQty: Number(it.expectedQty),
           unitPrice: it.unitPrice ? Number(it.unitPrice) : null,
           packagingType: it.packagingType || null,
+          unitsPerPackage: it.unitsPerPackage ? Number(it.unitsPerPackage) : null,
+          packageLengthCm: it.packageLengthCm ? Number(it.packageLengthCm) : null,
+          packageWidthCm: it.packageWidthCm ? Number(it.packageWidthCm) : null,
+          packageHeightCm: it.packageHeightCm ? Number(it.packageHeightCm) : null,
+          packageWeightKg: it.packageWeightKg ? Number(it.packageWeightKg) : null,
           notes: it.notes || null,
         })),
       };
       const supplyIdForUpdate = supply?.supplyId || supply?.supply_id || supply?.id;
+      // eslint-disable-next-line no-console
+      console.log('[SUPPLY-DEBUG] mode=', mode, 'isEdit=', isEdit, 'supplyId=', supplyIdForUpdate, 'payload=', JSON.parse(JSON.stringify(payload)));
       const saved = isEdit
         ? await supplyService.update(supplyIdForUpdate, payload)
         : await supplyService.create(payload);
       notify(isEdit ? 'Поставка изменена' : 'Плановая поставка создана');
       onSaved?.(saved);
-      reset();
       onClose?.();
     } catch (ex) {
       setError(ex?.data?.message || ex?.message || 'Не удалось сохранить поставку');
@@ -267,6 +278,24 @@ const CreateSupplyDialog = ({ open, onClose, onSaved, supply = null }) => {
       setBusy(false);
     }
   };
+
+  const handleSupplierCreated = useCallback((created) => {
+    setSupplierDialogOpen(false);
+    if (!created) return;
+    const newId = created.supplierId || created.id;
+    const newName = created.name || '';
+    if (refreshSuppliers) {
+      Promise.resolve(refreshSuppliers()).finally(() => {
+        if (newId) {
+          setSupplierId(String(newId));
+          setSupplierLabel(newName);
+        }
+      });
+    } else if (newId) {
+      setSupplierId(String(newId));
+      setSupplierLabel(newName);
+    }
+  }, [refreshSuppliers]);
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
@@ -284,53 +313,56 @@ const CreateSupplyDialog = ({ open, onClose, onSaved, supply = null }) => {
           </ToggleButtonGroup>
 
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Склад</InputLabel>
-              <Select
-                value={warehouseId}
+            {user?.warehouseId ? (
+              <TextField
+                fullWidth
+                size="small"
                 label="Склад"
-                onChange={(e) => setWarehouseId(e.target.value)}
-              >
-                {warehouseOptions.map((w) => {
-                  const id = String(w.warehouseId || w.id);
-                  return (
-                    <MenuItem key={id} value={id}>
-                      {w.name}{w.address ? ` · ${w.address}` : ''}
-                    </MenuItem>
-                  );
-                })}
-              </Select>
-            </FormControl>
-            <Stack direction="row" spacing={1} sx={{ flex: 1, alignItems: 'flex-start' }}>
+                value={
+                  (warehouseOptions.find(
+                    (w) => String(w.warehouseId || w.id) === String(user.warehouseId),
+                  )?.name) || 'Мой склад'
+                }
+                InputProps={{ readOnly: true }}
+                helperText="Поставка создаётся на ваш склад"
+              />
+            ) : (
               <FormControl fullWidth size="small">
-                <InputLabel>Поставщик</InputLabel>
+                <InputLabel>Склад *</InputLabel>
                 <Select
-                  value={supplierId}
-                  label="Поставщик"
-                  onChange={(e) => {
-                    setSupplierId(e.target.value);
-                    const sel = (suppliers || []).find((s) => String(s.supplierId || s.id) === String(e.target.value));
-                    if (sel) setSupplierName(sel.name || '');
-                  }}
-                  displayEmpty
-                  renderValue={(value) => {
-                    if (!value) return <em>— не выбран —</em>;
-                    const sel = (suppliers || []).find((s) => String(s.supplierId || s.id) === String(value));
-                    if (sel) return `${sel.name}${sel.unp ? ` (ИНН ${sel.unp})` : ''}`;
-                    return supplierName || '—';
-                  }}
+                  value={warehouseId}
+                  label="Склад *"
+                  onChange={(e) => setWarehouseId(e.target.value)}
                 >
-                  <MenuItem value=""><em>— не выбран —</em></MenuItem>
-                  {(suppliers || []).map((s) => {
-                    const id = String(s.supplierId || s.id);
+                  {warehouseOptions.map((w) => {
+                    const id = String(w.warehouseId || w.id);
                     return (
-                      <MenuItem key={id} value={id}>
-                        {s.name}{s.unp ? ` (ИНН ${s.unp})` : ''}
-                      </MenuItem>
+                      <MenuItem key={id} value={id}>{w.name}</MenuItem>
                     );
                   })}
                 </Select>
               </FormControl>
+            )}
+
+            <Stack direction="row" spacing={1} sx={{ flex: 1, alignItems: 'flex-start' }}>
+              <Autocomplete
+                fullWidth
+                size="small"
+                options={supplierOptions}
+                value={selectedSupplierOption}
+                getOptionLabel={(opt) => opt
+                  ? `${opt.name}${opt.unp ? ` (ИНН ${opt.unp})` : ''}`
+                  : ''}
+                isOptionEqualToValue={(a, b) => a?.id === b?.id}
+                onChange={(_, val) => {
+                  setSupplierId(val?.id || '');
+                  setSupplierLabel(val?.name || '');
+                }}
+                renderInput={(params) => (
+                  <TextField {...params} label="Поставщик" />
+                )}
+                noOptionsText="Поставщиков нет — создайте нового"
+              />
               <Button
                 variant="outlined"
                 size="small"
@@ -351,6 +383,7 @@ const CreateSupplyDialog = ({ open, onClose, onSaved, supply = null }) => {
               value={expectedDate}
               onChange={(e) => setExpectedDate(e.target.value)}
               InputLabelProps={{ shrink: true }}
+              sx={{ maxWidth: 220 }}
             />
             <TextField
               size="small"
@@ -361,122 +394,32 @@ const CreateSupplyDialog = ({ open, onClose, onSaved, supply = null }) => {
             />
           </Stack>
 
-          {mode === 'quantity' && (
+          {mode === 'quantity' ? (
             <TextField
               size="small"
-              label="Плановое число позиций"
+              label="Плановое число позиций *"
               type="number"
               value={totalItems}
               onChange={(e) => setTotalItems(e.target.value)}
               helperText="Кладовщик внесёт номенклатуру при приёмке; SKU сгенерируется автоматически"
               sx={{ maxWidth: 320 }}
             />
-          )}
-
-          {mode === 'detailed' && (
+          ) : (
             <Stack spacing={1}>
               <Divider />
               <Typography variant="subtitle2">Позиции</Typography>
               <Typography variant="caption" color="text.secondary">
-                Выберите товар из справочника или впишите название нового — SKU сгенерируется
-                автоматически при приёмке. Срок годности указывается уже при приёмке партии.
+                Срок годности указывается уже при приёмке партии.
               </Typography>
               {items.map((it, idx) => (
-                <Stack key={idx} direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems="flex-start">
-                  <Autocomplete
-                    freeSolo
-                    size="small"
-                    sx={{ flex: 1, minWidth: 240 }}
-                    options={productOptions}
-                    loading={productSearchBusy}
-                    value={it.productId
-                      ? productOptions.find((p) => (p.productId || p.id) === it.productId)
-                          || { productId: it.productId, name: it.productName, sku: it.sku }
-                      : (it.productName || null)
-                    }
-                    getOptionLabel={(opt) =>
-                      typeof opt === 'string'
-                        ? opt
-                        : (opt?.name ? `${opt.name}${opt.sku ? ` · ${opt.sku}` : ''}` : '')
-                    }
-                    onInputChange={(_, val) => {
-                      setProductSearchQuery(val || '');
-                      if (typeof val === 'string') updateItem(idx, { productName: val });
-                    }}
-                    onChange={(_, val) => {
-                      if (val && typeof val === 'object') {
-                        updateItem(idx, {
-                          productId: val.productId || val.id,
-                          productName: val.name,
-                          sku: val.sku || '',
-                          unitOfMeasure: val.unitOfMeasure || val.unit_of_measure || 'шт',
-                          storageConditions: val.requiredStorageCondition || val.required_storage_condition || it.storageConditions,
-                        });
-                      } else if (typeof val === 'string') {
-                        updateItem(idx, { productId: null, productName: val, sku: '' });
-                      } else {
-                        updateItem(idx, { productId: null, productName: '', sku: '' });
-                      }
-                    }}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        label="Товар (из справочника или новый)"
-                        InputProps={{
-                          ...params.InputProps,
-                          endAdornment: (
-                            <>
-                              {productSearchBusy && <CircularProgress size={16} />}
-                              {params.InputProps.endAdornment}
-                            </>
-                          ),
-                        }}
-                      />
-                    )}
-                  />
-                  <TextField
-                    size="small" label="Кол-во" type="number" value={it.expectedQty}
-                    onChange={(e) => updateItem(idx, { expectedQty: e.target.value })}
-                    sx={{ width: 100 }}
-                  />
-                  <TextField
-                    size="small" label="Цена" type="number" value={it.unitPrice}
-                    onChange={(e) => updateItem(idx, { unitPrice: e.target.value })}
-                    sx={{ width: 110 }}
-                  />
-                  <FormControl size="small" sx={{ minWidth: 130 }}>
-                    <InputLabel>Упаковка</InputLabel>
-                    <Select
-                      value={it.packagingType || ''}
-                      label="Упаковка"
-                      onChange={(e) => updateItem(idx, { packagingType: e.target.value })}
-                    >
-                      {PACKAGING_OPTIONS.map((o) => (
-                        <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <FormControl size="small" sx={{ minWidth: 150 }}>
-                    <InputLabel>Условия</InputLabel>
-                    <Select
-                      value={it.storageConditions || 'ROOM'}
-                      label="Условия"
-                      onChange={(e) => updateItem(idx, { storageConditions: e.target.value })}
-                    >
-                      {STORAGE_OPTIONS.map((o) => (
-                        <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <IconButton
-                    onClick={() => removeItem(idx)}
-                    disabled={items.length === 1}
-                    color="error"
-                    size="small"
-                  >
-                    <DeleteOutlineIcon />
-                  </IconButton>
-                </Stack>
+                <SupplyItemRow
+                  key={it.localId}
+                  index={idx}
+                  item={it}
+                  onPatch={(patch) => updateItem(it.localId, patch)}
+                  onRemove={() => removeItem(it.localId)}
+                  disableRemove={items.length === 1}
+                />
               ))}
               <Button startIcon={<AddIcon />} onClick={addItem} variant="text" size="small">
                 Добавить позицию
@@ -496,23 +439,151 @@ const CreateSupplyDialog = ({ open, onClose, onSaved, supply = null }) => {
       <CreateSupplierInlineDialog
         open={supplierDialogOpen}
         onClose={() => setSupplierDialogOpen(false)}
-        onCreated={(created) => {
-          const newId = created?.supplierId || created?.id;
-          setSupplierDialogOpen(false);
-          if (refreshSuppliers) {
-            Promise.resolve(refreshSuppliers()).then(() => {
-              if (newId) {
-                setSupplierId(String(newId));
-                setSupplierName(created.name || '');
-              }
-            });
-          } else if (newId) {
-            setSupplierId(String(newId));
-            setSupplierName(created.name || '');
-          }
-        }}
+        onCreated={handleSupplierCreated}
       />
     </Dialog>
+  );
+};
+
+const SupplyItemRow = ({ item, index, onPatch, onRemove, disableRemove }) => {
+  const [productOptions, setProductOptions] = useState([]);
+  const [productSearchBusy, setProductSearchBusy] = useState(false);
+  const [inputValue, setInputValue] = useState(item.productName || '');
+
+  useEffect(() => {
+    setInputValue(item.productName || '');
+  }, [item.productName]);
+
+  useEffect(() => {
+    const query = inputValue?.trim();
+    if (!query || query.length < 2) {
+      setProductOptions([]);
+      return;
+    }
+    let cancelled = false;
+    setProductSearchBusy(true);
+    const handle = setTimeout(async () => {
+      try {
+        const res = await productService.searchProducts(query);
+        if (!cancelled) {
+          const list = Array.isArray(res) ? res : (res?.content || []);
+          setProductOptions(list);
+        }
+      } catch {
+        if (!cancelled) setProductOptions([]);
+      } finally {
+        if (!cancelled) setProductSearchBusy(false);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [inputValue]);
+
+  const autocompleteValue = useMemo(() => {
+    if (item.productId) {
+      const fromOptions = productOptions.find(
+        (p) => (p.productId || p.id) === item.productId
+      );
+      if (fromOptions) return fromOptions;
+      return { productId: item.productId, name: item.productName, sku: item.sku };
+    }
+    return null;
+  }, [item.productId, item.productName, item.sku, productOptions]);
+
+  return (
+    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems="flex-start">
+      <Autocomplete
+        freeSolo
+        size="small"
+        sx={{ flex: 1, minWidth: 240 }}
+        options={productOptions}
+        loading={productSearchBusy}
+        value={autocompleteValue}
+        inputValue={inputValue}
+        onInputChange={(_, val, reason) => {
+          setInputValue(val || '');
+          if (reason === 'input') {
+            onPatch({ productName: val || '', productId: null, sku: '' });
+          } else if (reason === 'clear') {
+            onPatch({ productName: '', productId: null, sku: '' });
+          }
+        }}
+        onChange={(_, val) => {
+          if (val && typeof val === 'object') {
+            onPatch({
+              productId: val.productId || val.id,
+              productName: val.name || '',
+              sku: val.sku || '',
+              unitOfMeasure: val.unitOfMeasure || val.unit_of_measure || item.unitOfMeasure,
+              storageConditions: val.requiredStorageCondition
+                || val.required_storage_condition
+                || item.storageConditions,
+            });
+          }
+        }}
+        getOptionLabel={(opt) => typeof opt === 'string'
+          ? opt
+          : (opt?.name ? `${opt.name}${opt.sku ? ` · ${opt.sku}` : ''}` : '')}
+        isOptionEqualToValue={(a, b) => (a?.productId || a?.id) === (b?.productId || b?.id)}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label={`Позиция ${index + 1}: товар (выбрать или ввести новый)`}
+            InputProps={{
+              ...params.InputProps,
+              endAdornment: (
+                <>
+                  {productSearchBusy && <CircularProgress size={16} />}
+                  {params.InputProps.endAdornment}
+                </>
+              ),
+            }}
+          />
+        )}
+      />
+      <TextField
+        size="small" label="Кол-во *" type="number" value={item.expectedQty}
+        onChange={(e) => onPatch({ expectedQty: e.target.value })}
+        sx={{ width: 100 }}
+      />
+      <TextField
+        size="small" label="Цена" type="number" value={item.unitPrice}
+        onChange={(e) => onPatch({ unitPrice: e.target.value })}
+        sx={{ width: 110 }}
+      />
+      <FormControl size="small" sx={{ minWidth: 130 }}>
+        <InputLabel>Упаковка</InputLabel>
+        <Select
+          value={item.packagingType || ''}
+          label="Упаковка"
+          onChange={(e) => onPatch({ packagingType: e.target.value })}
+        >
+          {PACKAGING_OPTIONS.map((o) => (
+            <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      <TextField
+        size="small" label="Ед./упак." type="number" value={item.unitsPerPackage || '1'}
+        onChange={(e) => onPatch({ unitsPerPackage: e.target.value })}
+        inputProps={{ min: '1', step: '1' }}
+        sx={{ width: 110 }}
+      />
+      <FormControl size="small" sx={{ minWidth: 150 }}>
+        <InputLabel>Условия</InputLabel>
+        <Select
+          value={item.storageConditions || 'ROOM'}
+          label="Условия"
+          onChange={(e) => onPatch({ storageConditions: e.target.value })}
+        >
+          {STORAGE_OPTIONS.map((o) => (
+            <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      <IconButton onClick={onRemove} disabled={disableRemove} color="error" size="small">
+        <DeleteOutlineIcon />
+      </IconButton>
+    </Stack>
   );
 };
 

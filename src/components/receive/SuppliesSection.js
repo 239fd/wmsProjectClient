@@ -47,7 +47,7 @@ const fmtDate = (iso) => {
   try { return new Date(iso).toLocaleDateString('ru-RU'); } catch { return String(iso); }
 };
 
-const SuppliesSection = ({ onPickReceive }) => {
+const SuppliesSection = ({ onPickReceive, refreshSignal = 0 }) => {
   const user = useSelector(selectUser);
   const { notify } = useSnackbar();
   const orgId = user?.organizationId;
@@ -93,8 +93,8 @@ const SuppliesSection = ({ onPickReceive }) => {
     setCounts(result);
   }, [orgId]);
 
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { loadCounts(); }, [loadCounts]);
+  useEffect(() => { load(); }, [load, refreshSignal]);
+  useEffect(() => { loadCounts(); }, [loadCounts, refreshSignal]);
 
   const handleImported = () => { load(); loadCounts(); };
   const handleSaved = () => {

@@ -58,6 +58,7 @@ export const API_ENDPOINTS = {
     PALLETS: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/pallets`,
     SLOTS: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/slots`,
     CELL_BY_ID: (cellId) => `${API_BASE_URL}/api/racks/cells/${cellId}`,
+    CELLS_FLAT: (warehouseId) => `${API_BASE_URL}/api/racks/warehouse/${warehouseId}/cells-flat`,
   },
 
   PRODUCTS: {
@@ -114,6 +115,11 @@ export const API_ENDPOINTS = {
     BY_WAREHOUSE: (warehouseId) => `${API_BASE_URL}/api/inventory/warehouse/${warehouseId}`,
     BY_PRODUCT: (productId) => `${API_BASE_URL}/api/inventory/product/${productId}`,
     BY_CELL: (cellId) => `${API_BASE_URL}/api/inventory/cell/${cellId}`,
+  },
+
+  PRODUCT_CARD: {
+    BY_ID: (productId) => `${API_BASE_URL}/api/product-card/${productId}`,
+    PDF: (productId) => `${API_BASE_URL}/api/product-card/${productId}/pdf`,
   },
 
   INVENTORY_CHECK: {

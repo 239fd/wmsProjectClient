@@ -28,6 +28,7 @@ import RevaluationPage from '../pages/RevaluationPage';
 import AnalyticsPage from '../pages/AnalyticsPage';
 import SuppliersPage from '../pages/SuppliersPage';
 import DocumentsPage from '../pages/DocumentsPage';
+import ProductCardPage from '../pages/ProductCardPage';
 
 
 const ProtectedRoute = ({ children }) => {
@@ -173,6 +174,11 @@ const AppRouter = () => {
         <Route path="suppliers" element={
           <RoleGuard allowed={['WORKER']}>
             <SuppliersPage />
+          </RoleGuard>
+        } />
+        <Route path="product-card" element={
+          <RoleGuard allowed={['WORKER']}>
+            <ProductCardPage />
           </RoleGuard>
         } />
         <Route path="supplies" element={<Navigate to="/main/receive" replace />} />

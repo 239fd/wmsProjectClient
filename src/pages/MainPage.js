@@ -34,6 +34,7 @@ const ALL_ACTIONS = [
   { key: 'writeoff',    label: 'Списание',         desc: 'Списать товар по причине',      path: '/main/writeoff',    icon: RemoveCircleOutlineIcon, color: '#d32f2f', allowed: ['ACCOUNTANT'] },
   { key: 'analytics',   label: 'Аналитика',        desc: 'KPI и динамика операций',       path: '/main/analytics',   icon: AssessmentIcon, color: '#9c27b0', allowed: ['DIRECTOR'] },
   { key: 'suppliers',   label: 'Поставщики',       desc: 'Справочник поставщиков',        path: '/main/suppliers',   icon: StorefrontIcon, color: '#5d4037', allowed: ['WORKER'] },
+  { key: 'product-card',label: 'Карточка товара',  desc: 'Где хранится, лог операций, перемещение', path: '/main/product-card', icon: InventoryIcon, color: '#1976d2', allowed: ['WORKER'] },
   { key: 'documents',   label: 'Документы',        desc: 'История и скачивание актов',    path: '/main/documents',   icon: DescriptionIcon, color: '#455a64', allowed: ['WORKER', 'ACCOUNTANT'] },
   { key: 'employees',   label: 'Сотрудники',       desc: 'Управление и приглашения',      path: '/main/employees',   icon: GroupIcon, color: '#6d4c41', allowed: ['DIRECTOR'] },
   { key: 'organization',label: 'Организация',      desc: 'Реквизиты и склады',            path: '/main/organization',icon: BusinessIcon, color: '#37474f', allowed: ['DIRECTOR'] },

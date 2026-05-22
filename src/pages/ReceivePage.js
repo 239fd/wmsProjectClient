@@ -26,6 +26,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { selectUser } from '../store/slices/authSlice';
 import productService from '../services/productService';
 import supplierService from '../services/supplierService';
+import warehouseService from '../services/warehouseService';
 import { useWarehouses, useSuppliers, useDraft } from '../hooks';
 import { useSnackbar } from '../context/SnackbarContext';
 import { receiveWizardSchema, supplierSchema, productCreateSchema } from '../validation/schemas';
@@ -45,14 +46,45 @@ const EMPTY_ITEM = {
   productId: '',
   productName: '',
   productSku: '',
-  quantity: '',
+  quantityPackages: '',
+  unitsPerPackage: '1',
   pricePerUnit: '',
   batchId: '',
   batchNumber: '',
   expiryDate: '',
   packagingType: 'BOX',
+  packageLengthCm: '',
+  packageWidthCm: '',
+  packageHeightCm: '',
+  packageWeightKg: '',
+  storageConditions: 'ROOM',
   cellId: '',
+  palletPlaceId: '',
   notes: '',
+};
+
+const STORAGE_OPTIONS = [
+  { value: 'ROOM', label: 'Комнатная' },
+  { value: 'COOL', label: 'Прохладная' },
+  { value: 'FRIDGE', label: 'Холодильник' },
+  { value: 'FREEZER', label: 'Морозильник' },
+];
+
+const FIELD_LABELS = {
+  productId: 'Товар',
+  quantityPackages: 'Кол-во упаковок',
+  pricePerUnit: 'Цена за единицу',
+  batchNumber: '№ партии',
+  expiryDate: 'Срок годности',
+  unitsPerPackage: 'Шт./упак.',
+  packageLengthCm: 'Длина упаковки',
+  packageWidthCm: 'Ширина упаковки',
+  packageHeightCm: 'Высота упаковки',
+  packageWeightKg: 'Вес упаковки',
+  storageConditions: 'Условия хранения',
+  cellId: 'Ячейка',
+  palletPlaceId: 'Паллет-место',
+  notes: 'Примечание',
 };
 
 const PACKAGING_OPTIONS = [
@@ -74,6 +106,7 @@ const ReceivePage = () => {
 
   const [productOptions, setProductOptions] = useState([]);
   const [productSearchBusy, setProductSearchBusy] = useState(false);
+  const [cellsFlat, setCellsFlat] = useState([]);
 
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
   const [productDialogOpen, setProductDialogOpen] = useState(false);
@@ -131,6 +164,19 @@ const ReceivePage = () => {
 
   }, [warehouses, user]);
 
+  const watchedWhId = watch('warehouseId');
+  useEffect(() => {
+    if (!watchedWhId) {
+      setCellsFlat([]);
+      return;
+    }
+    let cancelled = false;
+    warehouseService.getAllCellsFlat(watchedWhId)
+      .then((list) => { if (!cancelled) setCellsFlat(Array.isArray(list) ? list : []); })
+      .catch(() => { if (!cancelled) setCellsFlat([]); });
+    return () => { cancelled = true; };
+  }, [watchedWhId]);
+
   const handleProductSearch = useCallback(async (query) => {
     if (!query || query.length < 2) { setProductOptions([]); return; }
     setProductSearchBusy(true);
@@ -143,17 +189,26 @@ const ReceivePage = () => {
 
   const handleAddItem = (product) => {
     if (!product) return;
+    const productId = product.productId || product.id;
+    if (!productId) {
+      notify('У товара нет productId — обновите страницу', 'error');
+      return;
+    }
     const existing = getValues('items') || [];
-    if (existing.some((it) => it.productId === product.productId)) {
+    if (existing.some((it) => String(it.productId) === String(productId))) {
       notify('Товар уже добавлен', 'warning');
       return;
     }
     itemsField.append({
       ...EMPTY_ITEM,
-      productId: product.productId,
-      productName: product.name,
-      productSku: product.sku,
+      productId,
+      productName: product.name || '',
+      productSku: product.sku || '',
     });
+    const nextIdx = (getValues('items') || []).length - 1;
+    setValue(`items.${nextIdx}.productId`, productId, { shouldValidate: false });
+    setValue(`items.${nextIdx}.productName`, product.name || '', { shouldValidate: false });
+    setValue(`items.${nextIdx}.productSku`, product.sku || '', { shouldValidate: false });
   };
 
   const handleSupplierCreated = async (created) => {
@@ -177,23 +232,36 @@ const ReceivePage = () => {
     setBusy(true);
     setProgress({ current: 0, total: values.items.length, succeeded: 0, failed: [] });
     try {
+      localStorage.setItem('generationMode', genMode);
       const session = await productService.createReceiptSession({
         warehouseId: values.warehouseId,
         supplierId: values.supplierId || null,
         supplyId: values.supplyId || null,
         userId,
         generalNotes: null,
-        items: values.items.map((it) => ({
-          productId: it.productId,
-          batchId: it.batchId || null,
-          cellId: it.cellId || null,
-          quantity: it.quantity,
-          pricePerUnit: it.pricePerUnit ?? 0,
-          batchNumber: it.batchNumber || null,
-          expiryDate: it.expiryDate || null,
-          packagingType: it.packagingType || null,
-          notes: it.notes || null,
-        })),
+        items: values.items.map((it) => {
+          const upp = Number(it.unitsPerPackage) || 1;
+          const packs = Number(it.quantityPackages) || 0;
+          const totalUnits = packs * upp;
+          return {
+            productId: it.productId,
+            batchId: it.batchId || null,
+            cellId: it.cellId || null,
+            palletPlaceId: it.palletPlaceId || null,
+            quantity: totalUnits,
+            pricePerUnit: it.pricePerUnit ?? 0,
+            batchNumber: it.batchNumber || null,
+            expiryDate: it.expiryDate || null,
+            packagingType: it.packagingType || null,
+            unitsPerPackage: upp,
+            packageLengthCm: it.packageLengthCm ? Number(it.packageLengthCm) : null,
+            packageWidthCm: it.packageWidthCm ? Number(it.packageWidthCm) : null,
+            packageHeightCm: it.packageHeightCm ? Number(it.packageHeightCm) : null,
+            packageWeightKg: it.packageWeightKg ? Number(it.packageWeightKg) : null,
+            storageConditions: it.storageConditions || null,
+            notes: it.notes || null,
+          };
+        }),
       });
 
       const sessionItems = (session.items || []).map((opItem, idx) => {
@@ -237,6 +305,7 @@ const ReceivePage = () => {
   };
 
   const [wizardKey, setWizardKey] = useState(0);
+  const [suppliesRefresh, setSuppliesRefresh] = useState(0);
 
   const [tab, setTab] = useState(0);
   const [discrepancyDialog, setDiscrepancyDialog] = useState(null);
@@ -251,6 +320,7 @@ const ReceivePage = () => {
       setLastResult((prev) => (prev?.session?.sessionId === sessionId
         ? { ...prev, session: { ...prev.session, status: 'COMPLETED' } }
         : prev));
+      setSuppliesRefresh((n) => n + 1);
     } catch (err) {
       notify(err.message || 'Не удалось завершить приёмку', 'error');
     }
@@ -268,6 +338,7 @@ const ReceivePage = () => {
           } }
         : prev));
       setDiscrepancyDialog(null);
+      setSuppliesRefresh((n) => n + 1);
     } catch (err) {
       notify(err.message || 'Не удалось зафиксировать расхождение', 'error');
     }
@@ -285,10 +356,13 @@ const ReceivePage = () => {
   const watchedItems = watch('items');
   const watchedWh = watch('warehouseId');
   const watchedSupplierId = watch('supplierId');
-  const totalSum = (watchedItems || []).reduce(
-    (s, it) => s + (Number(it.quantity || 0) * Number(it.pricePerUnit || 0)),
-    0,
-  );
+  const lineTotal = (it) => {
+    const packs = Number(it?.quantityPackages || 0);
+    const upp = Number(it?.unitsPerPackage || 1) || 1;
+    const price = Number(it?.pricePerUnit || 0);
+    return packs * upp * price;
+  };
+  const totalSum = (watchedItems || []).reduce((s, it) => s + lineTotal(it), 0);
 
   const supplierName = (id) => suppliers.find((s) => s.supplierId === id)?.name || '—';
   const warehouseName = (id) => warehouses.find((w) => (w.warehouseId || w.id) === id)?.name || '—';
@@ -410,6 +484,27 @@ const ReceivePage = () => {
         <Alert severity="warning">{errors.items.message}</Alert>
       )}
 
+      {Array.isArray(errors.items) && errors.items.some(Boolean) && (
+        <Alert severity="warning">
+          Заполните все обязательные поля в позициях ниже:
+          <Box component="ul" sx={{ m: 0, pl: 3 }}>
+            {errors.items.map((rowErr, rowIdx) => {
+              if (!rowErr) return null;
+              const fields = Object.entries(rowErr)
+                .filter(([, v]) => v && v.message)
+                .map(([k, v]) => `${FIELD_LABELS[k] || k}: ${v.message}`);
+              if (!fields.length) return null;
+              const name = watchedItems?.[rowIdx]?.productName || `Позиция ${rowIdx + 1}`;
+              return (
+                <li key={rowIdx}>
+                  <b>{name}</b>: {fields.join('; ')}
+                </li>
+              );
+            })}
+          </Box>
+        </Alert>
+      )}
+
       {itemsField.fields.length === 0 ? (
         <Alert severity="info">
           Найдите товар через поле выше — он добавится в список с полями для количества/партии/цены.
@@ -420,11 +515,13 @@ const ReceivePage = () => {
             <TableHead>
               <TableRow>
                 <TableCell sx={{ minWidth: 200 }}>Товар</TableCell>
-                <TableCell align="right" sx={{ width: 110 }}>Кол-во *</TableCell>
+                <TableCell align="right" sx={{ width: 110 }}>Упак. *</TableCell>
+                <TableCell align="right" sx={{ width: 100 }}>Шт./упак. *</TableCell>
                 <TableCell align="right" sx={{ width: 110 }}>Цена *</TableCell>
                 <TableCell sx={{ width: 130 }}>№ партии *</TableCell>
                 <TableCell sx={{ width: 150 }}>Срок годности *</TableCell>
                 <TableCell sx={{ width: 130 }}>Упаковка</TableCell>
+                <TableCell sx={{ width: 140 }}>Условия хран.</TableCell>
                 <TableCell sx={{ width: 60 }}></TableCell>
               </TableRow>
             </TableHead>
@@ -433,16 +530,33 @@ const ReceivePage = () => {
                 <React.Fragment key={it.id}>
                   <TableRow>
                     <TableCell>
-                      <Typography variant="body2" fontWeight={600}>{it.productName}</Typography>
-                      <Typography variant="caption" color="text.secondary">{it.productSku}</Typography>
+                      <input type="hidden" {...register(`items.${i}.productId`)} />
+                      <input type="hidden" {...register(`items.${i}.productName`)} />
+                      <input type="hidden" {...register(`items.${i}.productSku`)} />
+                      <Typography variant="body2" fontWeight={600}>{watchedItems?.[i]?.productName || it.productName}</Typography>
+                      <Typography variant="caption" color="text.secondary">{watchedItems?.[i]?.productSku || it.productSku}</Typography>
                     </TableCell>
                     <TableCell align="right">
                       <TextField
                         size="small" type="number" fullWidth
-                        inputProps={{ step: '0.01', min: '0' }}
-                        {...register(`items.${i}.quantity`)}
-                        error={!!errors.items?.[i]?.quantity}
-                        helperText={errors.items?.[i]?.quantity?.message}
+                        inputProps={{ step: '1', min: '0' }}
+                        {...register(`items.${i}.quantityPackages`)}
+                        error={!!errors.items?.[i]?.quantityPackages}
+                        helperText={(() => {
+                          const packs = Number(watchedItems?.[i]?.quantityPackages) || 0;
+                          const upp = Number(watchedItems?.[i]?.unitsPerPackage) || 1;
+                          if (errors.items?.[i]?.quantityPackages) return errors.items[i].quantityPackages.message;
+                          return packs > 0 ? `= ${packs * upp} шт.` : ' ';
+                        })()}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <TextField
+                        size="small" type="number" fullWidth
+                        inputProps={{ step: '1', min: '1' }}
+                        {...register(`items.${i}.unitsPerPackage`)}
+                        error={!!errors.items?.[i]?.unitsPerPackage}
+                        helperText={errors.items?.[i]?.unitsPerPackage?.message || 'шт. в 1 упак.'}
                       />
                     </TableCell>
                     <TableCell align="right">
@@ -486,6 +600,21 @@ const ReceivePage = () => {
                         )}
                       />
                     </TableCell>
+                    <TableCell>
+                      <Controller
+                        control={control}
+                        name={`items.${i}.storageConditions`}
+                        render={({ field }) => (
+                          <FormControl size="small" fullWidth>
+                            <Select {...field} displayEmpty>
+                              {STORAGE_OPTIONS.map((opt) => (
+                                <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        )}
+                      />
+                    </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                         <Tooltip title="Дублировать (новая партия того же товара)">
@@ -514,13 +643,125 @@ const ReceivePage = () => {
                     </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell colSpan={7} sx={{ pt: 0 }}>
-                      <Stack direction="row" spacing={2}>
+                    <TableCell colSpan={9} sx={{ pt: 0 }}>
+                      <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
                         <TextField
-                          size="small" label="ID ячейки" sx={{ flex: 1 }}
-                          {...register(`items.${i}.cellId`)}
-                          helperText="Если пусто — auto-placement"
+                          size="small" label="Длина упак. (см) *" type="number" sx={{ width: 140 }}
+                          inputProps={{ step: '0.1', min: '0' }}
+                          {...register(`items.${i}.packageLengthCm`)}
+                          error={!!errors.items?.[i]?.packageLengthCm}
+                          helperText={errors.items?.[i]?.packageLengthCm?.message}
                         />
+                        <TextField
+                          size="small" label="Ширина упак. (см) *" type="number" sx={{ width: 140 }}
+                          inputProps={{ step: '0.1', min: '0' }}
+                          {...register(`items.${i}.packageWidthCm`)}
+                          error={!!errors.items?.[i]?.packageWidthCm}
+                          helperText={errors.items?.[i]?.packageWidthCm?.message}
+                        />
+                        <TextField
+                          size="small" label="Высота упак. (см) *" type="number" sx={{ width: 140 }}
+                          inputProps={{ step: '0.1', min: '0' }}
+                          {...register(`items.${i}.packageHeightCm`)}
+                          error={!!errors.items?.[i]?.packageHeightCm}
+                          helperText={errors.items?.[i]?.packageHeightCm?.message
+                            || (watchedItems?.[i]?.packagingType === 'PALLET' ? 'для PALLET — высота важна' : ' ')}
+                        />
+                        <TextField
+                          size="small" label="Вес упак. (кг) *" type="number" sx={{ width: 140 }}
+                          inputProps={{ step: '0.001', min: '0' }}
+                          {...register(`items.${i}.packageWeightKg`)}
+                          error={!!errors.items?.[i]?.packageWeightKg}
+                          helperText={errors.items?.[i]?.packageWeightKg?.message}
+                        />
+                      </Stack>
+                      <Stack direction="row" spacing={2}>
+                        {watchedItems?.[i]?.packagingType === 'PALLET' ? (
+                          <Controller
+                            control={control}
+                            name={`items.${i}.palletPlaceId`}
+                            render={({ field }) => {
+                              const itemCond = watchedItems?.[i]?.storageConditions;
+                              const palletPlaces = cellsFlat.filter((c) => !c.occupied
+                                && c.rackKind === 'PALLET'
+                                && (!itemCond || c.rackStorageConditions === itemCond));
+                              const selected = palletPlaces.find((c) => String(c.id) === String(field.value)) || null;
+                              return (
+                                <Autocomplete
+                                  sx={{ flex: 1 }}
+                                  size="small"
+                                  options={palletPlaces}
+                                  value={selected}
+                                  onChange={(_, val) => field.onChange(val?.id || '')}
+                                  groupBy={(opt) => `${opt.rackName} · ${opt.rackStorageConditions || '—'}`}
+                                  getOptionLabel={(opt) => opt
+                                    ? `${String(opt.id).slice(0, 8)} · ${opt.lengthCm}×${opt.widthCm}см`
+                                    : ''}
+                                  isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
+                                  renderInput={(params) => (
+                                    <TextField {...params} label="Паллет-место (упаковка PALLET)"
+                                      helperText={palletPlaces.length === 0
+                                        ? 'Нет свободных паллет-мест — будет auto'
+                                        : `Доступно ${palletPlaces.length} паллет-мест`}
+                                    />
+                                  )}
+                                />
+                              );
+                            }}
+                          />
+                        ) : (
+                          <Controller
+                            control={control}
+                            name={`items.${i}.cellId`}
+                            render={({ field }) => {
+                              const itemCond = watchedItems?.[i]?.storageConditions;
+                              const pkg = watchedItems?.[i] || {};
+                              const fitsBox = (c) => {
+                                const pL = Number(pkg.packageLengthCm) || 0;
+                                const pW = Number(pkg.packageWidthCm) || 0;
+                                const pH = Number(pkg.packageHeightCm) || 0;
+                                if (!pL || !pW || !pH) return true;
+                                if (!c.lengthCm || !c.widthCm || !c.heightCm) return true;
+                                const pkgArr = [pL, pW, pH].sort((a, b) => a - b);
+                                const celArr = [Number(c.lengthCm), Number(c.widthCm), Number(c.heightCm)]
+                                  .sort((a, b) => a - b);
+                                return pkgArr[0] <= celArr[0]
+                                  && pkgArr[1] <= celArr[1]
+                                  && pkgArr[2] <= celArr[2];
+                              };
+                              const matching = cellsFlat.filter((c) => !c.occupied
+                                && (!itemCond || c.rackStorageConditions === itemCond)
+                                && c.rackKind !== 'PALLET'
+                                && fitsBox(c));
+                              const selected = cellsFlat.find((c) => String(c.id) === String(field.value)) || null;
+                              return (
+                                <Autocomplete
+                                  sx={{ flex: 1 }}
+                                  size="small"
+                                  options={matching}
+                                  value={selected}
+                                  onChange={(_, val) => field.onChange(val?.id || '')}
+                                  groupBy={(opt) => `${opt.rackName} · ${opt.rackKind} · ${opt.rackStorageConditions || '—'}`}
+                                  getOptionLabel={(opt) => {
+                                    if (!opt) return '';
+                                    const wt = opt.maxWeightKg ? ` · до ${opt.maxWeightKg}кг` : '';
+                                    const sz = opt.lengthCm
+                                      ? ` · ${opt.lengthCm}×${opt.widthCm}×${opt.heightCm}см` : '';
+                                    return `${String(opt.id).slice(0, 8)}${wt}${sz}`;
+                                  }}
+                                  isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
+                                  renderInput={(params) => (
+                                    <TextField {...params} label="Ячейка/полка"
+                                      helperText={matching.length === 0
+                                        ? 'Нет свободных ячеек — будет auto'
+                                        : `Доступно ${matching.length} ячеек${itemCond ? ` · ${itemCond}` : ''}`}
+                                    />
+                                  )}
+                                />
+                              );
+                            }}
+                          />
+                        )}
                         <TextField
                           size="small" label="Примечание" sx={{ flex: 2 }}
                           {...register(`items.${i}.notes`)}
@@ -552,12 +793,26 @@ const ReceivePage = () => {
         </Grid>
       </Paper>
 
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Typography variant="subtitle2" mb={1}>Генерация документов приёмки</Typography>
+        <GenerationModeCheckbox value={genMode} onChange={(v) => {
+          setGenMode(v);
+          localStorage.setItem('generationMode', v);
+        }} />
+        <Typography variant="caption" color="text.secondary">
+          При включённом РПА — документы заполняются роботом через Office (Excel/Word).
+          Иначе генерируется PDF серверным движком (быстрее).
+        </Typography>
+      </Paper>
+
       <TableContainer component={Paper} variant="outlined">
         <Table size="small">
           <TableHead>
             <TableRow>
               <TableCell>Товар</TableCell>
-              <TableCell align="right">Кол-во</TableCell>
+              <TableCell align="right">Упак.</TableCell>
+              <TableCell align="right">Шт./упак.</TableCell>
+              <TableCell align="right">Всего шт.</TableCell>
               <TableCell align="right">Цена</TableCell>
               <TableCell align="right">Сумма</TableCell>
               <TableCell>Партия</TableCell>
@@ -567,15 +822,19 @@ const ReceivePage = () => {
           </TableHead>
           <TableBody>
             {(watchedItems || []).map((it, i) => {
-              const sum = Number(it.quantity || 0) * Number(it.pricePerUnit || 0);
+              const packs = Number(it.quantityPackages || 0);
+              const upp = Number(it.unitsPerPackage || 1) || 1;
+              const sum = lineTotal(it);
               return (
                 <TableRow key={`${it.productId}-${i}`}>
                   <TableCell>
                     <Typography variant="body2">{it.productName}</Typography>
                     <Typography variant="caption" color="text.secondary">{it.productSku}</Typography>
                   </TableCell>
-                  <TableCell align="right">{it.quantity}</TableCell>
-                  <TableCell align="right">{it.pricePerUnit}</TableCell>
+                  <TableCell align="right">{packs}</TableCell>
+                  <TableCell align="right">{upp}</TableCell>
+                  <TableCell align="right">{packs * upp}</TableCell>
+                  <TableCell align="right">{Number(it.pricePerUnit || 0).toFixed(2)}</TableCell>
                   <TableCell align="right">{sum.toFixed(2)}</TableCell>
                   <TableCell>{it.batchNumber || '—'}</TableCell>
                   <TableCell>{it.expiryDate || '—'}</TableCell>
@@ -632,15 +891,48 @@ const ReceivePage = () => {
         <Typography variant="h4" fontWeight={700} mb={3}>Поставки и приёмка</Typography>
 
         <SuppliesSection
+          refreshSignal={suppliesRefresh}
           onPickReceive={(supply) => {
             if (supply?.warehouseId) setValue('warehouseId', supply.warehouseId);
-            if (supply?.supplierId) setValue('supplierId', supply.supplierId);
             const id = supply?.supplyId || supply?.id;
             if (id) setValue('supplyId', id);
-            notify('Поставка выбрана — заполните позиции ниже', 'info');
+            const applySupplier = () => {
+              if (supply?.supplierId) {
+                setValue('supplierId', String(supply.supplierId), { shouldValidate: false });
+              }
+            };
+            if (supply?.supplierId
+                && !suppliers.some((s) => String(s.supplierId) === String(supply.supplierId))) {
+              Promise.resolve(refreshSuppliers?.()).finally(applySupplier);
+            } else {
+              applySupplier();
+            }
+            const rawItems = Array.isArray(supply?.items) ? supply.items : [];
+            if (rawItems.length > 0) {
+              const prefilledItems = rawItems.map((it) => ({
+                ...EMPTY_ITEM,
+                productId: it.productId || it.product_id || '',
+                productName: it.productName || it.product_name || '',
+                productSku: it.sku || it.product_sku || '',
+                quantity: (it.expectedQty ?? it.expected_qty) != null
+                  ? String(it.expectedQty ?? it.expected_qty) : '',
+                pricePerUnit: (it.unitPrice ?? it.unit_price) != null
+                  ? String(it.unitPrice ?? it.unit_price) : '',
+                packagingType: it.packagingType || it.packaging_type || 'BOX',
+                unitsPerPackage: (it.unitsPerPackage ?? it.units_per_package) != null
+                  ? String(it.unitsPerPackage ?? it.units_per_package) : '1',
+                storageConditions: it.storageConditions || it.storage_conditions || 'ROOM',
+              }));
+              setValue('items', prefilledItems);
+              notify(`Поставка выбрана — подтянуто ${prefilledItems.length} позиций, дозаполните партию/срок`, 'info');
+            } else {
+              notify('Поставка выбрана — заполните позиции ниже', 'info');
+            }
             try {
               window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-            } catch { /* ignore */ }
+            } catch {
+              /* noop */
+            }
           }}
         />
 
@@ -1259,8 +1551,8 @@ const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
   } = useForm({
     resolver: yupResolver(productCreateSchema),
     defaultValues: {
-      name: '', sku: '', barcode: '', category: '',
-      unitOfMeasure: 'шт', description: '', weightKg: '', volumeM3: '',
+      name: '', sku: '', barcode: '',
+      unitOfMeasure: 'шт', weightKg: '', volumeM3: '',
     },
     mode: 'onTouched',
   });
@@ -1268,8 +1560,8 @@ const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
   useEffect(() => {
     if (open) {
       reset({
-        name: '', sku: '', barcode: '', category: '',
-        unitOfMeasure: 'шт', description: '', weightKg: '', volumeM3: '',
+        name: '', sku: '', barcode: '',
+        unitOfMeasure: 'шт', weightKg: '', volumeM3: '',
       });
     }
   }, [open, reset]);
@@ -1279,6 +1571,7 @@ const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
     try {
       const payload = {
         ...values,
+        unitOfMeasure: values.unitOfMeasure || 'шт',
         weightKg: values.weightKg ?? null,
         volumeM3: values.volumeM3 ?? null,
       };
@@ -1321,30 +1614,21 @@ const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
               helperText={errors.barcode?.message}
             />
           </Stack>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-            <TextField
-              label="Категория"
-              fullWidth size="small"
-              {...register('category')}
-              error={!!errors.category}
-              helperText={errors.category?.message}
-            />
-            <Controller
-              name="unitOfMeasure"
-              control={control}
-              render={({ field }) => (
-                <FormControl fullWidth size="small" error={!!errors.unitOfMeasure}>
-                  <InputLabel>Ед. измерения</InputLabel>
-                  <Select {...field} label="Ед. измерения" variant="outlined">
-                    {UNIT_OPTIONS.map((u) => (
-                      <MenuItem key={u} value={u}>{u}</MenuItem>
-                    ))}
-                  </Select>
-                  <FormHelperText>{errors.unitOfMeasure?.message || 'шт / кг / л / упак'}</FormHelperText>
-                </FormControl>
-              )}
-            />
-          </Stack>
+          <Controller
+            name="unitOfMeasure"
+            control={control}
+            render={({ field }) => (
+              <FormControl fullWidth size="small" error={!!errors.unitOfMeasure}>
+                <InputLabel>Ед. измерения</InputLabel>
+                <Select {...field} label="Ед. измерения" variant="outlined">
+                  {UNIT_OPTIONS.map((u) => (
+                    <MenuItem key={u} value={u}>{u}</MenuItem>
+                  ))}
+                </Select>
+                <FormHelperText>{errors.unitOfMeasure?.message || 'шт / кг / л / упак'}</FormHelperText>
+              </FormControl>
+            )}
+          />
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField
               label="Вес, кг"
@@ -1365,12 +1649,6 @@ const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
               helperText={errors.volumeM3?.message}
             />
           </Stack>
-          <TextField
-            label="Описание"
-            fullWidth size="small"
-            {...register('description')}
-            multiline rows={2}
-          />
         </Stack>
       </DialogContent>
       <DialogActions>

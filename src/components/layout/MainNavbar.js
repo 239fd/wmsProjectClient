@@ -30,6 +30,7 @@ const NAV_ITEMS = [
     {key: 'writeoff',     label: 'Списание',        path: '/main/writeoff',     allowed: ['ACCOUNTANT'], requiresOrg: true},
     {key: 'documents',    label: 'Документы',       path: '/main/documents',    allowed: ['WORKER', 'ACCOUNTANT'], requiresOrg: true},
     {key: 'suppliers',    label: 'Поставщики',      path: '/main/suppliers',    allowed: ['WORKER'],     requiresOrg: true},
+    {key: 'product-card', label: 'Карточка товара', path: '/main/product-card', allowed: ['WORKER'],     requiresOrg: true},
     {key: 'analytics',    label: 'Аналитика',       path: '/main/analytics',    allowed: ['DIRECTOR'],   requiresOrg: true},
     {key: 'employees',    label: 'Сотрудники',      path: '/main/employees',    allowed: ['DIRECTOR'],   requiresOrg: true},
     {key: 'organization', label: 'Организация',     path: '/main/organization', allowed: ['DIRECTOR'],   requiresOrg: false},

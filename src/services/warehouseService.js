@@ -72,6 +72,10 @@ const warehouseService = {
   async getSlotsByRack(rackId) {
     return httpService.get(API_ENDPOINTS.RACKS.SLOTS(rackId));
   },
+
+  async getAllCellsFlat(warehouseId) {
+    return httpService.get(API_ENDPOINTS.RACKS.CELLS_FLAT(warehouseId));
+  },
 };
 
 export default warehouseService;

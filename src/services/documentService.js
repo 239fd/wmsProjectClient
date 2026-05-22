@@ -1,7 +1,6 @@
 
 import httpService from './httpService';
 import { API_ENDPOINTS } from '../config/api';
-import { readFilenameFromResponse } from '../utils/contentDisposition';
 
 const documentService = {
 
@@ -24,24 +23,20 @@ const documentService = {
   },
 
   async download(id, filename = 'document.pdf') {
-    const token = localStorage.getItem('accessToken');
-    const url = API_ENDPOINTS.DOCUMENT_REGISTRY.DOWNLOAD(id);
-    const response = await fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!response.ok) {
-      throw new Error(`Не удалось скачать документ: HTTP ${response.status}`);
+    try {
+      const { url } = await httpService.get(API_ENDPOINTS.DOCUMENT_REGISTRY.PRESIGNED_URL(id));
+      if (!url) throw new Error('Сервер не вернул ссылку на документ');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      throw new Error(err?.message || 'Не удалось скачать документ');
     }
-    const effectiveName = readFilenameFromResponse(response, filename);
-    const blob = await response.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = effectiveName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(blobUrl);
   },
 
   async generate(type, data, format = 'pdf') {

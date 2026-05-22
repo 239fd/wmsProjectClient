@@ -12,6 +12,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
@@ -212,13 +213,37 @@ const ShipPage = () => {
       <Box sx={{ width: '100%', maxWidth: 1440, mx: 'auto', px: { xs: 2, md: 3 } }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
           <Typography variant="h4" fontWeight={700}>Заявки на отгрузку</Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setCreateOpen(true)}
-          >
-            Создать заявку
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              startIcon={<CloudDownloadIcon />}
+              disabled={!user?.warehouseId}
+              onClick={async () => {
+                try {
+                  const result = await shipRequestService.importFrom1c({
+                    warehouseId: user?.warehouseId,
+                    userId: user?.userId,
+                  });
+                  notify(
+                    `Импорт: загружено ${result?.imported ?? 0}, пропущено ${result?.skipped ?? 0}, с ошибкой ${result?.errored ?? 0}`,
+                    (result?.errored ?? 0) > 0 ? 'warning' : 'success',
+                  );
+                  await loadAll();
+                } catch (err) {
+                  notify(err?.message || 'Не удалось импортировать из 1С', 'error');
+                }
+              }}
+            >
+              Импорт из 1С
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setCreateOpen(true)}
+            >
+              Создать заявку
+            </Button>
+          </Stack>
         </Stack>
 
         <Paper sx={{ p: 2, mb: 3, borderRadius: 3 }}>

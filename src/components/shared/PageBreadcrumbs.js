@@ -19,6 +19,7 @@ const ROUTE_LABELS = {
     suppliers: 'Поставщики',
     receive: 'Поставки',
     documents: 'Документы',
+    'product-card': 'Карточка товара',
 };
 
 const PageBreadcrumbs = ({ items, sx }) => {

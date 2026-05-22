@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-const DRAFT_VERSION = 1;
+const DRAFT_VERSION = 2;
 const DEFAULT_INTERVAL_MS = 5000;
 const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
