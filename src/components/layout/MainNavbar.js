@@ -37,9 +37,9 @@ const NAV_ITEMS = [
 ];
 
 const ROLE_LABELS = {
-    WORKER: 'Работник',
+    WORKER: 'Кладовщик',
     ACCOUNTANT: 'Бухгалтер',
-    DIRECTOR: 'Директор',
+    DIRECTOR: 'Заведующий',
 };
 
 const MainNavbar = () => {

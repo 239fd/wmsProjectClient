@@ -110,11 +110,14 @@ const WriteoffPage = () => {
   useEffect(() => { loadList(); }, [loadList]);
 
   const handleOpen = (item) => {
+    const shortage = item.discrepancy != null ? Math.abs(Number(item.discrepancy)) : null;
     reset({
       ...EMPTY_FORM,
       responsibleUserId: userId || '',
       cellId: item.cellId || '',
       batchId: item.batchId || '',
+      quantity: shortage && shortage > 0 ? String(shortage) : '',
+      reason: item.discrepancy != null ? 'SHORTAGE' : (EMPTY_FORM.reason || ''),
     });
     setDialog({ open: true, item });
   };
@@ -134,6 +137,7 @@ const WriteoffPage = () => {
         responsibleUserId: values.responsibleUserId || null,
         commissionMembers: values.commissionMembers?.length > 0 ? values.commissionMembers : null,
         userId,
+        countId: dialog.item?.countId || null,
         notes: values.notes || null,
       });
       notify('Списание зафиксировано');
@@ -378,11 +382,12 @@ const WriteoffPage = () => {
                       <InputLabel>Комиссия</InputLabel>
                       <Select
                         {...field}
+                        value={Array.isArray(field.value) ? field.value : []}
                         multiple
                         label="Комиссия"
                         variant="outlined"
                         disabled={busy}
-                        renderValue={(selected) => `${selected.length} участник(а)`}
+                        renderValue={(selected) => `${(selected || []).length} участник(а)`}
                       >
                         {employees.map((emp) => (
                           <MenuItem key={emp.userId} value={emp.userId}>

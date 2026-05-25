@@ -176,7 +176,7 @@ const SuppliersPage = () => {
 
         <Paper sx={{ p: 2, mb: 3, borderRadius: 3 }}>
           <TextField
-            placeholder="Поиск: название, ИНН, email, контактное лицо"
+            placeholder="Поиск: название, УНП, email, контактное лицо"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             size="small"
@@ -211,7 +211,7 @@ const SuppliersPage = () => {
                   <TableHead>
                     <TableRow>
                       <TableCell>Наименование</TableCell>
-                      <TableCell>ИНН</TableCell>
+                      <TableCell>УНП</TableCell>
                       <TableCell>Контактное лицо</TableCell>
                       <TableCell>Телефон</TableCell>
                       <TableCell>Email</TableCell>
@@ -290,7 +290,7 @@ const SuppliersPage = () => {
                   helperText={errors.name?.message}
                 />
                 <TextField
-                  label="ИНН"
+                  label="УНП"
                   fullWidth
                   disabled={busy}
                   {...register('unp')}

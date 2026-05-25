@@ -115,7 +115,7 @@ const OAuthCallbackPage = () => {
             return;
           } catch (e) {
             console.error('OAuth director auto-complete failed:', e);
-            setError(typeof e === 'string' ? e : 'Не удалось завершить OAuth-регистрацию директора');
+            setError(typeof e === 'string' ? e : 'Не удалось завершить OAuth-регистрацию заведующего');
             setTimeout(() => navigate('/register'), 3000);
             return;
           }

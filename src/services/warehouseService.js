@@ -69,6 +69,10 @@ const warehouseService = {
     return httpService.get(API_ENDPOINTS.RACKS.CELL_BY_ID(cellId));
   },
 
+  async getCellByCode(slotCode, warehouseId) {
+    return httpService.get(API_ENDPOINTS.RACKS.CELL_BY_CODE(slotCode, warehouseId));
+  },
+
   async getSlotsByRack(rackId) {
     return httpService.get(API_ENDPOINTS.RACKS.SLOTS(rackId));
   },

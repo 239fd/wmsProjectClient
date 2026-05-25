@@ -27,7 +27,8 @@ import { selectUser } from '../store/slices/authSlice';
 import productService from '../services/productService';
 import supplierService from '../services/supplierService';
 import warehouseService from '../services/warehouseService';
-import { useWarehouses, useSuppliers, useDraft } from '../hooks';
+import { useWarehouses, useSuppliers, useEmployees, useDraft } from '../hooks';
+import { enumLabel } from '../utils/enumLabels';
 import { useSnackbar } from '../context/SnackbarContext';
 import { receiveWizardSchema, supplierSchema, productCreateSchema } from '../validation/schemas';
 import FormWizard from '../components/shared/FormWizard';
@@ -53,6 +54,7 @@ const EMPTY_ITEM = {
   batchNumber: '',
   expiryDate: '',
   packagingType: 'BOX',
+  palletType: '',
   packageLengthCm: '',
   packageWidthCm: '',
   packageHeightCm: '',
@@ -61,6 +63,13 @@ const EMPTY_ITEM = {
   cellId: '',
   palletPlaceId: '',
   notes: '',
+};
+
+const PALLET_DIMS = {
+  EUR:  { lengthCm: 80,  widthCm: 120, heightCm: 14.5, label: 'EUR · 80×120' },
+  FIN:  { lengthCm: 100, widthCm: 120, heightCm: 14.5, label: 'FIN · 100×120' },
+  US:   { lengthCm: 120, widthCm: 120, heightCm: 14.5, label: 'US · 120×120'  },
+  ASIA: { lengthCm: 110, widthCm: 110, heightCm: 14.5, label: 'ASIA · 110×110' },
 };
 
 const STORAGE_OPTIONS = [
@@ -94,6 +103,27 @@ const PACKAGING_OPTIONS = [
   { value: 'EACH', label: 'Поштучно' },
 ];
 
+const RACK_KIND_RU = {
+  SHELF: 'Стеллаж',
+  CELL: 'Ячейка',
+  PALLET: 'Паллет-место',
+};
+
+const STORAGE_RU = {
+  ROOM: 'Комнатная',
+  COOL: 'Прохладная',
+  FRIDGE: 'Холодильник',
+  FREEZER: 'Морозильник',
+};
+
+function capacityByDims(cellL, cellW, cellH, pkgL, pkgW, pkgH) {
+  if (!cellL || !cellW || !cellH || !pkgL || !pkgW || !pkgH) return null;
+  const c = [cellL, cellW, cellH].sort((a, b) => a - b);
+  const p = [pkgL, pkgW, pkgH].sort((a, b) => a - b);
+  if (p[0] > c[0] || p[1] > c[1] || p[2] > c[2]) return 0;
+  return Math.floor(c[0] / p[0]) * Math.floor(c[1] / p[1]) * Math.floor(c[2] / p[2]);
+}
+
 const ReceivePage = () => {
   const navigate = useNavigate();
   const user = useSelector(selectUser);
@@ -103,6 +133,7 @@ const ReceivePage = () => {
 
   const { data: warehouses, loading: whLoading } = useWarehouses();
   const { data: suppliers, refresh: refreshSuppliers } = useSuppliers();
+  const { data: employees } = useEmployees();
 
   const [productOptions, setProductOptions] = useState([]);
   const [productSearchBusy, setProductSearchBusy] = useState(false);
@@ -125,6 +156,10 @@ const ReceivePage = () => {
       warehouseId: '',
       supplierId: '',
       supplyId: '',
+      contractNumber: '',
+      contractDate: '',
+      responsibleUserId: '',
+      commissionMembers: [],
       items: [],
     },
     mode: 'onTouched',
@@ -199,16 +234,22 @@ const ReceivePage = () => {
       notify('Товар уже добавлен', 'warning');
       return;
     }
+    const prefilledPrice = product.price != null && product.price !== ''
+      ? String(product.price) : '';
     itemsField.append({
       ...EMPTY_ITEM,
       productId,
       productName: product.name || '',
       productSku: product.sku || '',
+      pricePerUnit: prefilledPrice,
     });
     const nextIdx = (getValues('items') || []).length - 1;
     setValue(`items.${nextIdx}.productId`, productId, { shouldValidate: false });
     setValue(`items.${nextIdx}.productName`, product.name || '', { shouldValidate: false });
     setValue(`items.${nextIdx}.productSku`, product.sku || '', { shouldValidate: false });
+    if (prefilledPrice) {
+      setValue(`items.${nextIdx}.pricePerUnit`, prefilledPrice, { shouldValidate: false });
+    }
   };
 
   const handleSupplierCreated = async (created) => {
@@ -239,6 +280,10 @@ const ReceivePage = () => {
         supplyId: values.supplyId || null,
         userId,
         generalNotes: null,
+        contractNumber: values.contractNumber || null,
+        contractDate: values.contractDate || null,
+        responsibleUserId: values.responsibleUserId || userId,
+        commissionMembers: values.commissionMembers?.length > 0 ? values.commissionMembers : null,
         items: values.items.map((it) => {
           const upp = Number(it.unitsPerPackage) || 1;
           const packs = Number(it.quantityPackages) || 0;
@@ -281,6 +326,8 @@ const ReceivePage = () => {
           status: session.status || 'PAUSED',
           receiptOrderDocId: session.receiptOrderDocId || null,
           receiptActDocId: session.receiptActDocId || null,
+          placementListDocId: session.placementListDocId || null,
+          documentError: session.documentError || null,
           items: sessionItems,
         },
         warehouseName: warehouses.find((w) => (w.warehouseId || w.id) === values.warehouseId)?.name,
@@ -296,6 +343,7 @@ const ReceivePage = () => {
         items: [],
       });
       setWizardKey((k) => k + 1);
+      setSuppliesRefresh((n) => n + 1);
     } catch (err) {
       notify(err.message || 'Не удалось создать сессию приёмки', 'error');
       setProgress({ current: 0, total: values.items.length, succeeded: 0, failed: [{ idx: 0, productName: '—', error: err.message || 'Ошибка' }] });
@@ -412,7 +460,7 @@ const ReceivePage = () => {
                   <MenuItem value="">— не указан —</MenuItem>
                   {suppliers.map((s) => (
                     <MenuItem key={s.supplierId} value={s.supplierId}>
-                      {s.name}{s.unp ? ` (ИНН ${s.unp})` : ''}
+                      {s.name}{s.unp ? ` (УНП ${s.unp})` : ''}
                     </MenuItem>
                   ))}
                 </Select>
@@ -441,7 +489,79 @@ const ReceivePage = () => {
           fullWidth
           disabled={busy}
           {...register('supplyId')}
+          InputLabelProps={{ shrink: true }}
           helperText="UUID плановой поставки, если приёмка фиксируется по конкретной"
+        />
+      </Grid>
+
+      <Grid size={{ xs: 12, md: 6 }}>
+        <TextField
+          label="Номер договора (опционально)"
+          fullWidth
+          disabled={busy}
+          {...register('contractNumber')}
+          helperText="Попадёт в акт приёмки / приходный ордер"
+        />
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <TextField
+          label="Дата договора (опционально)"
+          type="date"
+          fullWidth
+          disabled={busy}
+          InputLabelProps={{ shrink: true }}
+          inputProps={{ max: new Date().toISOString().slice(0, 10) }}
+          {...register('contractDate')}
+          error={!!errors.contractDate}
+          helperText={errors.contractDate?.message}
+        />
+      </Grid>
+
+      <Grid size={{ xs: 12, md: 6 }}>
+        <Controller
+          name="responsibleUserId"
+          control={control}
+          render={({ field }) => (
+            <FormControl fullWidth>
+              <InputLabel>Ответственный за приёмку (МОЛ)</InputLabel>
+              <Select {...field} label="Ответственный за приёмку (МОЛ)" disabled={busy}>
+                <MenuItem value="">— по умолчанию текущий пользователь —</MenuItem>
+                {employees.map((emp) => (
+                  <MenuItem key={emp.userId} value={emp.userId}>
+                    {emp.username || emp.email} · {enumLabel('UserRole', emp.role)}
+                  </MenuItem>
+                ))}
+              </Select>
+              <FormHelperText>
+                Председатель комиссии, попадёт в подпись акта приёмки.
+              </FormHelperText>
+            </FormControl>
+          )}
+        />
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <Controller
+          name="commissionMembers"
+          control={control}
+          render={({ field }) => (
+            <FormControl fullWidth>
+              <InputLabel>Комиссия (опционально)</InputLabel>
+              <Select
+                {...field}
+                value={Array.isArray(field.value) ? field.value : []}
+                multiple
+                label="Комиссия (опционально)"
+                disabled={busy}
+                renderValue={(selected) => `${(selected || []).length} участник(а)`}
+              >
+                {employees.map((emp) => (
+                  <MenuItem key={emp.userId} value={emp.userId}>
+                    {emp.username || emp.email} · {enumLabel('UserRole', emp.role)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
         />
       </Grid>
     </Grid>
@@ -516,8 +636,8 @@ const ReceivePage = () => {
               <TableRow>
                 <TableCell sx={{ minWidth: 200 }}>Товар</TableCell>
                 <TableCell align="right" sx={{ width: 110 }}>Упак. *</TableCell>
-                <TableCell align="right" sx={{ width: 100 }}>Шт./упак. *</TableCell>
-                <TableCell align="right" sx={{ width: 110 }}>Цена *</TableCell>
+                <TableCell align="right" sx={{ width: 120 }}>Шт./упак. *</TableCell>
+                <TableCell align="right" sx={{ width: 120 }}>Цена</TableCell>
                 <TableCell sx={{ width: 130 }}>№ партии *</TableCell>
                 <TableCell sx={{ width: 150 }}>Срок годности *</TableCell>
                 <TableCell sx={{ width: 130 }}>Упаковка</TableCell>
@@ -556,13 +676,15 @@ const ReceivePage = () => {
                         inputProps={{ step: '1', min: '1' }}
                         {...register(`items.${i}.unitsPerPackage`)}
                         error={!!errors.items?.[i]?.unitsPerPackage}
-                        helperText={errors.items?.[i]?.unitsPerPackage?.message || 'шт. в 1 упак.'}
+                        helperText={errors.items?.[i]?.unitsPerPackage?.message || 'шт./уп.'}
+                        FormHelperTextProps={{ sx: { whiteSpace: 'nowrap', mx: 0 } }}
                       />
                     </TableCell>
                     <TableCell align="right">
                       <TextField
                         size="small" type="number" fullWidth
                         inputProps={{ step: '0.01', min: '0' }}
+                        placeholder="из карточки"
                         {...register(`items.${i}.pricePerUnit`)}
                         error={!!errors.items?.[i]?.pricePerUnit}
                         helperText={errors.items?.[i]?.pricePerUnit?.message}
@@ -644,37 +766,78 @@ const ReceivePage = () => {
                   </TableRow>
                   <TableRow>
                     <TableCell colSpan={9} sx={{ pt: 0 }}>
-                      <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
-                        <TextField
-                          size="small" label="Длина упак. (см) *" type="number" sx={{ width: 140 }}
-                          inputProps={{ step: '0.1', min: '0' }}
-                          {...register(`items.${i}.packageLengthCm`)}
-                          error={!!errors.items?.[i]?.packageLengthCm}
-                          helperText={errors.items?.[i]?.packageLengthCm?.message}
-                        />
-                        <TextField
-                          size="small" label="Ширина упак. (см) *" type="number" sx={{ width: 140 }}
-                          inputProps={{ step: '0.1', min: '0' }}
-                          {...register(`items.${i}.packageWidthCm`)}
-                          error={!!errors.items?.[i]?.packageWidthCm}
-                          helperText={errors.items?.[i]?.packageWidthCm?.message}
-                        />
-                        <TextField
-                          size="small" label="Высота упак. (см) *" type="number" sx={{ width: 140 }}
-                          inputProps={{ step: '0.1', min: '0' }}
-                          {...register(`items.${i}.packageHeightCm`)}
-                          error={!!errors.items?.[i]?.packageHeightCm}
-                          helperText={errors.items?.[i]?.packageHeightCm?.message
-                            || (watchedItems?.[i]?.packagingType === 'PALLET' ? 'для PALLET — высота важна' : ' ')}
-                        />
-                        <TextField
-                          size="small" label="Вес упак. (кг) *" type="number" sx={{ width: 140 }}
-                          inputProps={{ step: '0.001', min: '0' }}
-                          {...register(`items.${i}.packageWeightKg`)}
-                          error={!!errors.items?.[i]?.packageWeightKg}
-                          helperText={errors.items?.[i]?.packageWeightKg?.message}
-                        />
-                      </Stack>
+                      {watchedItems?.[i]?.packagingType === 'PALLET' ? (
+                        <Stack direction="row" spacing={1} sx={{ mb: 1 }} alignItems="center">
+                          <Controller
+                            control={control}
+                            name={`items.${i}.palletType`}
+                            render={({ field }) => (
+                              <FormControl size="small" sx={{ minWidth: 220 }}
+                                error={!!errors.items?.[i]?.palletType}>
+                                <InputLabel>Тип паллета *</InputLabel>
+                                <Select
+                                  {...field}
+                                  label="Тип паллета *"
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    field.onChange(v);
+                                    const d = PALLET_DIMS[v];
+                                    if (d) {
+                                      setValue(`items.${i}.packageLengthCm`, String(d.lengthCm),
+                                        { shouldValidate: false });
+                                      setValue(`items.${i}.packageWidthCm`, String(d.widthCm),
+                                        { shouldValidate: false });
+                                      setValue(`items.${i}.packageHeightCm`, String(d.heightCm),
+                                        { shouldValidate: false });
+                                    }
+                                  }}
+                                >
+                                  {Object.entries(PALLET_DIMS).map(([k, d]) => (
+                                    <MenuItem key={k} value={k}>{d.label}</MenuItem>
+                                  ))}
+                                </Select>
+                                {errors.items?.[i]?.palletType && (
+                                  <FormHelperText>{errors.items[i].palletType.message}</FormHelperText>
+                                )}
+                              </FormControl>
+                            )}
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            Габариты паллета подставятся из выбранного типа. Выберите паллет-место ниже.
+                          </Typography>
+                        </Stack>
+                      ) : (
+                        <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                          <TextField
+                            size="small" label="Длина упак. (см) *" type="number" sx={{ width: 140 }}
+                            inputProps={{ step: '0.1', min: '0' }}
+                            {...register(`items.${i}.packageLengthCm`)}
+                            error={!!errors.items?.[i]?.packageLengthCm}
+                            helperText={errors.items?.[i]?.packageLengthCm?.message}
+                          />
+                          <TextField
+                            size="small" label="Ширина упак. (см) *" type="number" sx={{ width: 140 }}
+                            inputProps={{ step: '0.1', min: '0' }}
+                            {...register(`items.${i}.packageWidthCm`)}
+                            error={!!errors.items?.[i]?.packageWidthCm}
+                            helperText={errors.items?.[i]?.packageWidthCm?.message}
+                          />
+                          <TextField
+                            size="small" label="Высота упак. (см) *" type="number" sx={{ width: 140 }}
+                            inputProps={{ step: '0.1', min: '0' }}
+                            {...register(`items.${i}.packageHeightCm`)}
+                            error={!!errors.items?.[i]?.packageHeightCm}
+                            helperText={errors.items?.[i]?.packageHeightCm?.message}
+                          />
+                          <TextField
+                            size="small" label="Вес упак. (кг) *" type="number" sx={{ width: 140 }}
+                            inputProps={{ step: '0.001', min: '0' }}
+                            {...register(`items.${i}.packageWeightKg`)}
+                            error={!!errors.items?.[i]?.packageWeightKg}
+                            helperText={errors.items?.[i]?.packageWeightKg?.message}
+                          />
+                        </Stack>
+                      )}
                       <Stack direction="row" spacing={2}>
                         {watchedItems?.[i]?.packagingType === 'PALLET' ? (
                           <Controller
@@ -692,13 +855,18 @@ const ReceivePage = () => {
                                   const celArr = [Number(c.lengthCm), Number(c.widthCm)].sort((a, b) => a - b);
                                   if (pkgArr[0] > celArr[0] || pkgArr[1] > celArr[1]) return false;
                                 }
-                                if (pH && c.maxHeightCm && pH > Number(c.maxHeightCm)) return false;
-                                if (pH && !c.maxHeightCm && c.heightCm && pH > Number(c.heightCm)) return false;
+                                const effH = c.remainingHeightCm != null
+                                  ? Number(c.remainingHeightCm)
+                                  : (c.maxHeightCm ? Number(c.maxHeightCm)
+                                      : (c.heightCm ? Number(c.heightCm) : 0));
+                                if (pH && effH && pH > effH) return false;
                                 return true;
                               };
+                              const pickedType = watchedItems?.[i]?.palletType;
                               const palletPlaces = cellsFlat.filter((c) => !c.occupied
                                 && c.rackKind === 'PALLET'
                                 && (!itemCond || c.rackStorageConditions === itemCond)
+                                && (!pickedType || !c.palletType || c.palletType === pickedType)
                                 && fitsPallet(c));
                               const selected = palletPlaces.find((c) => String(c.id) === String(field.value)) || null;
                               return (
@@ -708,11 +876,15 @@ const ReceivePage = () => {
                                   options={palletPlaces}
                                   value={selected}
                                   onChange={(_, val) => field.onChange(val?.id || '')}
-                                  groupBy={(opt) => `${opt.rackName} · ${opt.rackStorageConditions || '—'}`}
+                                  groupBy={(opt) => `${opt.rackName} · ${STORAGE_RU[opt.rackStorageConditions] || opt.rackStorageConditions || '—'}`}
                                   getOptionLabel={(opt) => {
                                     if (!opt) return '';
-                                    const maxH = opt.maxHeightCm ? ` · maxH ${opt.maxHeightCm}см` : '';
-                                    return `${String(opt.id).slice(0, 8)} · ${opt.lengthCm}×${opt.widthCm}см${maxH}`;
+                                    const type = opt.palletType ? `${opt.palletType} · ` : '';
+                                    const code = opt.slotCode || opt.cellCode || String(opt.id).slice(0, 8);
+                                    const remH = opt.remainingHeightCm != null
+                                      ? ` · до ${opt.remainingHeightCm}см осталось`
+                                      : (opt.maxHeightCm ? ` · maxH ${opt.maxHeightCm}см` : '');
+                                    return `${type}${code} · ${opt.lengthCm}×${opt.widthCm}см${remH}`;
                                   }}
                                   isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
                                   renderInput={(params) => (
@@ -738,28 +910,27 @@ const ReceivePage = () => {
                                 const pW = Number(pkg.packageWidthCm) || 0;
                                 const pH = Number(pkg.packageHeightCm) || 0;
                                 if (!pL || !pW || !pH) return true;
-                                if (!c.lengthCm || !c.widthCm || !c.heightCm) return true;
-                                const pkgArr = [pL, pW, pH].sort((a, b) => a - b);
-                                const celArr = [Number(c.lengthCm), Number(c.widthCm), Number(c.heightCm)]
-                                  .sort((a, b) => a - b);
-                                return pkgArr[0] <= celArr[0]
-                                  && pkgArr[1] <= celArr[1]
-                                  && pkgArr[2] <= celArr[2];
-                              };
-                              const fitsWeight = (c) => {
-                                const pkgWeight = Number(pkg.packageWeightKg) || 0;
-                                const packs = Number(pkg.quantityPackages) || 0;
-                                const total = pkgWeight * packs;
-                                if (!total) return true;
-                                if (!c.maxWeightKg) return true;
-                                return total <= Number(c.maxWeightKg);
+                                if (!c.lengthCm || !c.widthCm) return true;
+                                const effH = c.remainingHeightCm != null
+                                  ? Number(c.remainingHeightCm)
+                                  : (c.heightCm ? Number(c.heightCm) : 0);
+                                if (!effH) return true;
+                                const cap = capacityByDims(
+                                  Number(c.lengthCm), Number(c.widthCm), effH, pL, pW, pH,
+                                );
+                                if (cap === null) return true;
+                                if (cap <= 0) return false;
+                                const packs = Number(pkg.quantityPackages) || 1;
+                                return cap >= packs;
                               };
                               const matching = cellsFlat.filter((c) => !c.occupied
                                 && (!itemCond || c.rackStorageConditions === itemCond)
                                 && c.rackKind !== 'PALLET'
-                                && fitsBox(c)
-                                && fitsWeight(c));
+                                && fitsBox(c));
                               const selected = cellsFlat.find((c) => String(c.id) === String(field.value)) || null;
+                              const pL = Number(pkg.packageLengthCm) || 0;
+                              const pW = Number(pkg.packageWidthCm) || 0;
+                              const pH = Number(pkg.packageHeightCm) || 0;
                               return (
                                 <Autocomplete
                                   sx={{ flex: 1 }}
@@ -767,20 +938,30 @@ const ReceivePage = () => {
                                   options={matching}
                                   value={selected}
                                   onChange={(_, val) => field.onChange(val?.id || '')}
-                                  groupBy={(opt) => `${opt.rackName} · ${opt.rackKind} · ${opt.rackStorageConditions || '—'}`}
+                                  groupBy={(opt) => `${opt.rackName} · ${RACK_KIND_RU[opt.rackKind] || opt.rackKind} · ${STORAGE_RU[opt.rackStorageConditions] || opt.rackStorageConditions || '—'}`}
                                   getOptionLabel={(opt) => {
                                     if (!opt) return '';
-                                    const wt = opt.maxWeightKg ? ` · до ${opt.maxWeightKg}кг` : '';
+                                    const effH = opt.remainingHeightCm != null
+                                      ? Number(opt.remainingHeightCm)
+                                      : (opt.heightCm ? Number(opt.heightCm) : 0);
+                                    const remH = opt.remainingHeightCm != null
+                                      ? ` · до ${opt.remainingHeightCm}см осталось`
+                                      : (opt.heightCm ? ` · до ${opt.heightCm}см` : '');
                                     const sz = opt.lengthCm
-                                      ? ` · ${opt.lengthCm}×${opt.widthCm}×${opt.heightCm}см` : '';
-                                    return `${String(opt.id).slice(0, 8)}${wt}${sz}`;
+                                      ? ` · ${opt.lengthCm}×${opt.widthCm}см` : '';
+                                    const cap = (pL && pW && pH && opt.lengthCm)
+                                      ? capacityByDims(Number(opt.lengthCm), Number(opt.widthCm), effH, pL, pW, pH)
+                                      : null;
+                                    const capLabel = cap != null && cap > 0 ? ` · вместит ~${cap} ед.` : '';
+                                    const code = opt.slotCode || opt.cellCode || String(opt.id).slice(0, 8);
+                                    return `${code}${sz}${remH}${capLabel}`;
                                   }}
                                   isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
                                   renderInput={(params) => (
                                     <TextField {...params} label="Ячейка/полка"
                                       helperText={matching.length === 0
-                                        ? 'Нет ячеек по габаритам/весу — будет auto'
-                                        : `Доступно ${matching.length} ячеек${itemCond ? ` · ${itemCond}` : ''}`}
+                                        ? 'Нет ячеек по габаритам — будет auto'
+                                        : `Доступно ${matching.length} ячеек${itemCond ? ` · ${STORAGE_RU[itemCond] || itemCond}` : ''}`}
                                     />
                                   )}
                                 />
@@ -957,7 +1138,6 @@ const ReceivePage = () => {
             try {
               window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
             } catch {
-              /* noop */
             }
           }}
         />
@@ -1006,6 +1186,12 @@ const ReceivePage = () => {
               ))}
             </Stack>
 
+            {lastResult.session.documentError && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                {lastResult.session.documentError}
+              </Alert>
+            )}
+
             <Stack direction="row" spacing={1} mb={2} flexWrap="wrap" useFlexGap>
               {lastResult.session.receiptOrderDocId && (
                 <DocumentDownloadButton
@@ -1019,6 +1205,13 @@ const ReceivePage = () => {
                   documentId={lastResult.session.receiptActDocId}
                   filename="receipt-act.pdf"
                   label="Акт приёмки"
+                />
+              )}
+              {lastResult.session.placementListDocId && (
+                <DocumentDownloadButton
+                  documentId={lastResult.session.placementListDocId}
+                  filename="placement-list.pdf"
+                  label="Лист размещения"
                 />
               )}
             </Stack>
@@ -1115,8 +1308,8 @@ const ReceivePage = () => {
 
         {tab === 0 && (
           <Alert severity="info">
-            После приёмки автоматически генерируется приходный ордер. Скачать акт PDF можно будет
-            в разделе «Документы» (после расширения бэкенд-ответа `documentId`).
+            После приёмки автоматически генерируется приходный ордер и акт приёмки.
+            Скачать PDF можно по ссылкам выше или в разделе «Документы».
           </Alert>
         )}
       </Box>
@@ -1308,7 +1501,7 @@ const DiscrepancyDialog = ({ session, userId, onClose, onSubmit }) => {
         productName: it.productName,
         productSku: it.productSku,
         expectedQty: Number(it.expectedQty || 0),
-        actualQty: String(it.expectedQty ?? ''),
+        actualQty: '',
         defectDescription: '',
         discrepancyType: 'SHORTAGE',
       })));
@@ -1519,7 +1712,7 @@ const CreateSupplierInlineDialog = ({ open, onClose, onCreated, notify }) => {
             autoFocus
           />
           <TextField
-            label="ИНН (9 цифр)"
+            label="УНП (9 цифр)"
             fullWidth size="small"
             {...register('unp')}
             error={!!errors.unp}
@@ -1578,7 +1771,7 @@ const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
     resolver: yupResolver(productCreateSchema),
     defaultValues: {
       name: '', sku: '', barcode: '',
-      unitOfMeasure: 'шт',
+      unitOfMeasure: 'шт', price: '',
     },
     mode: 'onTouched',
   });
@@ -1587,7 +1780,7 @@ const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
     if (open) {
       reset({
         name: '', sku: '', barcode: '',
-        unitOfMeasure: 'шт',
+        unitOfMeasure: 'шт', price: '',
       });
     }
   }, [open, reset]);
@@ -1598,6 +1791,7 @@ const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
       const payload = {
         ...values,
         unitOfMeasure: values.unitOfMeasure || 'шт',
+        price: values.price !== '' && values.price != null ? Number(values.price) : null,
       };
       const created = await productService.createProduct(payload);
       onCreated(created);
@@ -1652,6 +1846,16 @@ const CreateProductInlineDialog = ({ open, onClose, onCreated, notify }) => {
                 <FormHelperText>{errors.unitOfMeasure?.message || 'шт / кг / л / упак'}</FormHelperText>
               </FormControl>
             )}
+          />
+          <TextField
+            label="Учётная цена, руб."
+            type="number"
+            fullWidth size="small"
+            {...register('price')}
+            error={!!errors.price}
+            helperText={errors.price?.message
+              || 'Базовая цена для переоценки/аналитики (можно изменить позже)'}
+            inputProps={{ min: 0, step: '0.01' }}
           />
         </Stack>
       </DialogContent>

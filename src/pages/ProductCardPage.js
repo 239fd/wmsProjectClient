@@ -12,8 +12,32 @@ import { selectUser } from '../store/slices/authSlice';
 import { useSnackbar } from '../context/SnackbarContext';
 import productService from '../services/productService';
 import productCardService from '../services/productCardService';
+import warehouseService from '../services/warehouseService';
+import { useWarehouses, useEmployees } from '../hooks';
 import EmptyState from '../components/shared/EmptyState';
 import TransferDialog from '../components/product/TransferDialog';
+
+const STORAGE_RU = {
+  ROOM: 'Комнатная',
+  COOL: 'Прохладная',
+  FRIDGE: 'Холодильник',
+  FREEZER: 'Морозильник',
+};
+
+const PACKAGING_RU = {
+  PALLET: 'Паллет',
+  BOX: 'Коробка',
+  CRATE: 'Ящик',
+  EACH: 'Поштучно',
+};
+
+const INVENTORY_STATUS_RU = {
+  AVAILABLE: 'Доступно',
+  RESERVED: 'Зарезервировано',
+  BLOCKED: 'Заблокировано',
+  EXPIRED: 'Просрочено',
+  DAMAGED: 'Повреждено',
+};
 
 const OPERATION_LABEL = {
   RECEIPT: 'Приёмка',
@@ -43,11 +67,13 @@ const OPERATION_COLOR = {
   INVENTORY: 'default',
 };
 
+const pad2 = (n) => String(n).padStart(2, '0');
 const fmtDateTime = (raw) => {
   if (!raw) return '—';
   try {
     const d = new Date(raw);
-    return `${d.toLocaleDateString('ru-RU')} ${d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+    if (Number.isNaN(d.getTime())) return String(raw);
+    return `${pad2(d.getDate())}-${pad2(d.getMonth() + 1)}-${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   } catch { return String(raw); }
 };
 
@@ -60,6 +86,8 @@ const ProductCardPage = () => {
   const { notify } = useSnackbar();
   const user = useSelector(selectUser);
   const userWarehouseId = user?.warehouseId;
+  const { data: warehouses } = useWarehouses();
+  const { data: employees } = useEmployees();
 
   const [query, setQuery] = useState('');
   const [options, setOptions] = useState([]);
@@ -70,6 +98,32 @@ const ProductCardPage = () => {
   const [tab, setTab] = useState(0);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [transferSource, setTransferSource] = useState(null);
+  const [cellsFlat, setCellsFlat] = useState([]);
+
+  useEffect(() => {
+    if (!userWarehouseId) { setCellsFlat([]); return; }
+    let cancelled = false;
+    warehouseService.getAllCellsFlat(userWarehouseId)
+      .then((list) => { if (!cancelled) setCellsFlat(Array.isArray(list) ? list : []); })
+      .catch(() => { if (!cancelled) setCellsFlat([]); });
+    return () => { cancelled = true; };
+  }, [userWarehouseId]);
+
+  const warehouseById = React.useMemo(() => {
+    const m = new Map();
+    (warehouses || []).forEach((w) => m.set(String(w.warehouseId || w.id), w.name));
+    return m;
+  }, [warehouses]);
+  const employeeById = React.useMemo(() => {
+    const m = new Map();
+    (employees || []).forEach((e) => m.set(String(e.userId), e.fullName || e.username || e.email));
+    return m;
+  }, [employees]);
+  const cellById = React.useMemo(() => {
+    const m = new Map();
+    (cellsFlat || []).forEach((c) => m.set(String(c.id), c));
+    return m;
+  }, [cellsFlat]);
 
   useEffect(() => {
     if (!query || query.length < 2) {
@@ -131,7 +185,22 @@ const ProductCardPage = () => {
   const allStocks = card?.currentStocks || [];
   const allBatches = card?.batches || [];
   const allOperations = card?.operations || [];
-  // WORKER видит только свой склад
+  const batchByIdMap = React.useMemo(() => {
+    const m = new Map();
+    (allBatches || []).forEach((b) => m.set(String(b.batchId), b));
+    return m;
+  }, [allBatches]);
+  const cellLabel = (cellId) => {
+    if (!cellId) return 'без ячейки';
+    const c = cellById.get(String(cellId));
+    if (!c) return String(cellId).slice(0, 8) + '…';
+    const code = c.slotCode || c.cellCode || c.id?.toString().slice(0, 8) + '…';
+    const rack = c.rackName ? `${c.rackName} / ` : '';
+    return `${rack}${code}`;
+  };
+  const warehouseLabel = (id) =>
+    warehouseById.get(String(id)) || (id ? String(id).slice(0, 8) + '…' : '—');
+  const userLabel = (id) => employeeById.get(String(id)) || (id ? String(id).slice(0, 8) + '…' : '—');
   const stocks = userWarehouseId
     ? allStocks.filter((s) => String(s.warehouseId) === String(userWarehouseId))
     : allStocks;
@@ -253,7 +322,7 @@ const ProductCardPage = () => {
                       <TableHead>
                         <TableRow>
                           <TableCell>Склад</TableCell>
-                          <TableCell>Ячейка</TableCell>
+                          <TableCell sx={{ minWidth: 220 }}>Ячейка</TableCell>
                           <TableCell>Партия</TableCell>
                           <TableCell>Срок до</TableCell>
                           <TableCell align="right">Кол-во</TableCell>
@@ -268,16 +337,21 @@ const ProductCardPage = () => {
                             && String(s.warehouseId) === String(userWarehouseId);
                           const movable = sameWh
                             && Number(s.quantity || 0) > Number(s.reservedQuantity || 0);
+                          const batch = batchByIdMap.get(String(s.batchId));
+                          const batchNum = s.batchNumber
+                            || batch?.batchNumber
+                            || (s.batchId ? String(s.batchId).slice(0, 8) + '…' : '—');
+                          const expiry = s.expiryDate || batch?.expiryDate;
                           return (
                             <TableRow key={s.inventoryId || idx}>
-                              <TableCell>{s.warehouseName || (s.warehouseId ? String(s.warehouseId).slice(0, 8) : '—')}</TableCell>
-                              <TableCell>{s.cellCode || (s.cellId ? String(s.cellId).slice(0, 8) : 'без ячейки')}</TableCell>
-                              <TableCell>{s.batchNumber || (s.batchId ? String(s.batchId).slice(0, 8) : '—')}</TableCell>
-                              <TableCell>{fmtDate(s.expiryDate)}</TableCell>
+                              <TableCell>{warehouseLabel(s.warehouseId)}</TableCell>
+                              <TableCell>{cellLabel(s.cellId)}</TableCell>
+                              <TableCell>{batchNum}</TableCell>
+                              <TableCell>{fmtDate(expiry)}</TableCell>
                               <TableCell align="right">{s.quantity ?? 0}</TableCell>
                               <TableCell align="right">{s.reservedQuantity ?? 0}</TableCell>
                               <TableCell>
-                                <Chip size="small" label={s.status || '—'} />
+                                <Chip size="small" label={INVENTORY_STATUS_RU[s.status] || s.status || '—'} />
                               </TableCell>
                               <TableCell align="right">
                                 <Tooltip title={movable
@@ -313,7 +387,6 @@ const ProductCardPage = () => {
                       <TableHead>
                         <TableRow>
                           <TableCell>№ партии</TableCell>
-                          <TableCell>Изготовлена</TableCell>
                           <TableCell>Срок до</TableCell>
                           <TableCell>Условия</TableCell>
                           <TableCell>Упаковка</TableCell>
@@ -325,10 +398,9 @@ const ProductCardPage = () => {
                         {batches.map((b) => (
                           <TableRow key={b.batchId}>
                             <TableCell>{b.batchNumber || '—'}</TableCell>
-                            <TableCell>{fmtDate(b.manufactureDate)}</TableCell>
                             <TableCell>{fmtDate(b.expiryDate)}</TableCell>
-                            <TableCell>{b.storageConditions || '—'}</TableCell>
-                            <TableCell>{b.packagingType || '—'}</TableCell>
+                            <TableCell>{STORAGE_RU[b.storageConditions] || b.storageConditions || '—'}</TableCell>
+                            <TableCell>{PACKAGING_RU[b.packagingType] || b.packagingType || '—'}</TableCell>
                             <TableCell align="right">{b.purchasePrice ?? '—'}</TableCell>
                             <TableCell>{b.supplier || '—'}</TableCell>
                           </TableRow>
@@ -347,6 +419,7 @@ const ProductCardPage = () => {
                         <TableRow>
                           <TableCell>Дата</TableCell>
                           <TableCell>Тип</TableCell>
+                          <TableCell>Склад</TableCell>
                           <TableCell align="right">Кол-во</TableCell>
                           <TableCell>Откуда → Куда</TableCell>
                           <TableCell>Партия</TableCell>
@@ -355,13 +428,14 @@ const ProductCardPage = () => {
                       </TableHead>
                       <TableBody>
                         {operations.map((op) => {
-                          const from = op.fromCellId ? String(op.fromCellId).slice(0, 8) : null;
-                          const to = op.toCellId
-                            ? String(op.toCellId).slice(0, 8)
-                            : (op.cellId ? String(op.cellId).slice(0, 8) : null);
-                          const cellLine = (op.operationType === 'TRANSFER' && from && to)
-                            ? `${from} → ${to}`
-                            : (to || from || '—');
+                          const cellLine = (op.operationType === 'TRANSFER' && op.fromCellId && op.toCellId)
+                            ? `${cellLabel(op.fromCellId)} → ${cellLabel(op.toCellId)}`
+                            : (op.toCellId ? cellLabel(op.toCellId)
+                                : (op.fromCellId ? cellLabel(op.fromCellId)
+                                    : (op.cellId ? cellLabel(op.cellId) : '—')));
+                          const batch = batchByIdMap.get(String(op.batchId));
+                          const batchNum = op.batchNumber || batch?.batchNumber
+                            || (op.batchId ? String(op.batchId).slice(0, 8) + '…' : '—');
                           return (
                             <TableRow key={op.operationId}>
                               <TableCell>{fmtDateTime(op.operationDate)}</TableCell>
@@ -372,18 +446,13 @@ const ProductCardPage = () => {
                                   color={OPERATION_COLOR[op.operationType] || 'default'}
                                 />
                               </TableCell>
+                              <TableCell>{warehouseLabel(op.warehouseId)}</TableCell>
                               <TableCell align="right">{op.quantity ?? 0}</TableCell>
                               <TableCell>
-                                <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                                  {cellLine}
-                                </Typography>
+                                <Typography variant="caption">{cellLine}</Typography>
                               </TableCell>
-                              <TableCell>
-                                {op.batchNumber || (op.batchId ? String(op.batchId).slice(0, 8) : '—')}
-                              </TableCell>
-                              <TableCell>
-                                {op.userName || (op.userId ? String(op.userId).slice(0, 8) : '—')}
-                              </TableCell>
+                              <TableCell>{batchNum}</TableCell>
+                              <TableCell>{userLabel(op.userId)}</TableCell>
                             </TableRow>
                           );
                         })}

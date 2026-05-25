@@ -73,7 +73,7 @@ const RegisterDirectorPage = () => {
           Назад
         </Button>
         <Typography variant="h5" color="text.primary" fontWeight={700} mb={1} align="center">
-          Регистрация директора
+          Регистрация заведующего
         </Typography>
         <Typography variant="body2" color="text.secondary" mb={3} align="center">
           После регистрации вы создадите свою организацию

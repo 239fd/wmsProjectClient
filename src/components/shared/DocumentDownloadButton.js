@@ -13,7 +13,17 @@ const DocumentDownloadButton = ({ documentId, filename, label = 'Скачать 
     const handleClick = async () => {
         setBusy(true);
         try {
-            await documentService.download(documentId, filename || `${documentId}.pdf`);
+            let resolvedFilename = filename;
+            if (!resolvedFilename) {
+                try {
+                    const meta = await documentService.getMetadata(documentId);
+                    const ext = (meta?.fileFormat || 'pdf').toLowerCase();
+                    resolvedFilename = `${meta?.documentNumber || meta?.documentType || documentId}.${ext}`;
+                } catch (_) {
+                    resolvedFilename = `${documentId}.pdf`;
+                }
+            }
+            await documentService.download(documentId, resolvedFilename);
         } catch (err) {
             notify(err.message || 'Не удалось скачать документ', 'error');
         } finally {

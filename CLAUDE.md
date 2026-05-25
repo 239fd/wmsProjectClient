@@ -117,7 +117,7 @@ Route guarding via four thin wrappers in `AppRouter.js`: `ProtectedRoute` (auth-
   - No intent → error "Регистрация была прервана" → `/register`. **No silent fallback to a manual role-picker** — `RoleSelectPage` was deleted.
 - **Bootstrap on F5**: `AppRouter` runs `bootstrapUser` thunk if `accessToken` exists but `user` is null (after page reload, missed login window etc).
 - **Refresh**: any 401 triggers single retry with `/api/auth/refresh` (logic duplicated in both HTTP layers).
-- **Roles** in `user.role` (singular): `WORKER`, `ACCOUNTANT`, `DIRECTOR`. **Don't add a fourth role.**
+- **Roles** in `user.role` (singular): `WORKER`, `ACCOUNTANT`, `DIRECTOR`. **Don't add a fourth role.** **Display labels (2026-05-25)** в UI: `WORKER` → «Кладовщик», `ACCOUNTANT` → «Бухгалтер», `DIRECTOR` → «Заведующий». Источники: `src/utils/enumLabels.js`, локальные `ROLE_LABEL/ROLE_LABELS` (MainPage, AnalyticsPage, EmployeesPage, MainNavbar, RegisterByInvitationPage), `<MenuItem value="WORKER">…`/`<MenuItem value="DIRECTOR">…`. Enum-значения, URL `/register/director` и идентификаторы кода (`registerDirector` thunk) не трогать — лейблы display-only.
 
 ### Redux store
 
@@ -221,6 +221,8 @@ const { data: warehouses, loading, error, refresh } = useWarehouses();
 ## Backend gotchas
 
 - Many product-service POSTs expect parameters **as `@RequestParam` (query)**, not body — especially inventory-check endpoints (`/start`, `/{id}/record`, `/{id}/complete`). Check the controller before assuming JSON body.
+- **`recordInventoryCount` (2026-05-25)**: principal key is `countId` (UUID per `InventoryCount` row). `productService.recordInventoryCount(sessionId, { countId, productId, cellId, actualQuantity, notes })` — `countId` шлётся как query-param и используется бэком напрямую (`recordActualCountById`). Legacy `(productId, cellId)` оставлен fallback'ом, но бэк бросает **409** если `(product, cell)` матчит >1 строки (несколько партий одного товара в ячейке). `InventoryPage` берёт `rec.countId` из `session.records[]`.
+- **`<GenerationModeCheckbox docType="…">` (2026-05-25)**: для PDF-only типов (`picking-list`, `placement-list`, `analytics-report`, `revaluation-act`, `receipt-act` **без расхождений**) компонент возвращает `null` — чекбокс RPA вообще не рендерится, путаницы с disabled-tooltip нет. На большинстве страниц проп `docType` не передаётся → чекбокс показывается нормально. `receipt-act` с непустым `data.discrepancies` бэк разрешает через RPA (Excel «АктРасхождения») — `DocumentService.isPdfOnly(type, data)` смотрит на payload.
 - Headers: backend often requires `X-User-Id`, `X-User-Role`, `X-Organization-Id` explicitly. Gateway should propagate from JWT but doesn't always — if you see `400 Required header missing`, set the header explicitly in the request.
 - Many product-service responses are `Map<String, Object>` (untyped). Field shapes can vary — render defensively.
 - All IDs are UUIDs (strings on the client).
@@ -248,7 +250,7 @@ const { data: warehouses, loading, error, refresh } = useWarehouses();
 1. Add URL (or URL-builder function) to `src/config/api.js` under the right `API_ENDPOINTS` section — **never** hardcode `/api/...` in a component/service.
 2. Use it from a `services/<domain>Service.js` (fetch via `httpService`) or from a Redux thunk (axios via `store/api.js`). Don't call `fetch`/`axios` directly from components.
 3. If it's authenticated, services and the axios instance attach the Bearer token automatically — don't pass manually.
-4. Gateway route lives in `backend/api-gateway/.../config/GatewayConfig.java`. Existing prefixes: `/api/auth`, `/api/profile`, `/api/oauth`, `/api/organizations`, `/api/invitations`, `/api/warehouses`, `/api/racks`, `/api/products`, `/api/batches`, `/api/operations`, `/api/inventory`, `/api/inventory-check`, `/api/analytics`, `/api/supplies` (включает `import-1c`/`import-json`/`sample-json`), `/api/suppliers`, `/api/product-card`, `/api/document-registry`, `/api/receipt-sessions`, `/api/documents`. **Снесены 2026-05-21:** `/api/erp-extractor`, `/api/erp-connections`. New prefix → edit `GatewayConfig.java`.
+4. Gateway route lives in `backend/api-gateway/.../config/GatewayConfig.java`. Existing prefixes: `/api/auth`, `/api/profile`, `/api/oauth`, `/api/organizations`, `/api/invitations`, `/api/warehouses`, `/api/racks`, `/api/products`, `/api/batches`, `/api/operations`, `/api/inventory`, `/api/inventory-check`, `/api/analytics`, `/api/supplies` (включает `import-1c`/`import-json`/`sample-json`), `/api/suppliers`, `/api/product-card`, `/api/document-registry`, `/api/receipt-sessions`, `/api/documents`. **С фронта сняты 2026-05-21:** `/api/erp-extractor`, `/api/erp-connections` — клиент через них больше не ходит. На бэке gateway-маппинг этих префиксов всё ещё лежит в `GatewayConfig.java:26-27`, но контроллеров за ними нет (см. `backend/CLAUDE.md` Gateway routing). New prefix → edit `GatewayConfig.java`.
 
 ## Docker
 

@@ -525,7 +525,7 @@ const OrganizationPage = () => {
                       <Typography variant="body1" mb={2}>{organization.shortName || '—'}</Typography>
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
-                      <Typography variant="subtitle2" color="text.secondary">ИНН</Typography>
+                      <Typography variant="subtitle2" color="text.secondary">УНП</Typography>
                       <Typography variant="body1" mb={2}>{organization.unp}</Typography>
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
@@ -820,7 +820,7 @@ const OrganizationPage = () => {
                   helperText={orgForm.formState.errors.shortName?.message}
                 />
                 <TextField
-                  label="ИНН"
+                  label="УНП"
                   fullWidth
                   disabled={orgBusy}
                   {...orgForm.register('unp')}
@@ -1162,6 +1162,7 @@ const RackSlotsTable = ({ kind, slots, rack }) => {
           <TableHead>
             <TableRow>
               <TableCell sx={{ width: 60 }}>№</TableCell>
+              <TableCell>Код</TableCell>
               <TableCell>Статус</TableCell>
               <TableCell>Загрузка</TableCell>
               <TableCell>Габариты Д×Ш×В, см</TableCell>
@@ -1171,6 +1172,7 @@ const RackSlotsTable = ({ kind, slots, rack }) => {
             {slots.map((s, i) => (
               <TableRow key={s.shelfId || s.id || i}>
                 <TableCell>{i + 1}</TableCell>
+                <TableCell><b>{s.slotCode || s.cellCode || '—'}</b></TableCell>
                 <TableCell><SlotStatusChip slot={s} /></TableCell>
                 <TableCell><SlotLoadCell slot={s} capacityKg={null} /></TableCell>
                 <TableCell>{dims(s)}</TableCell>
@@ -1200,6 +1202,7 @@ const RackSlotsTable = ({ kind, slots, rack }) => {
           <TableHead>
             <TableRow>
               <TableCell sx={{ width: 60 }}>№</TableCell>
+              <TableCell>Код</TableCell>
               <TableCell>Статус</TableCell>
               <TableCell>Загрузка</TableCell>
               <TableCell>Габариты Д×Ш×В, см</TableCell>
@@ -1209,6 +1212,7 @@ const RackSlotsTable = ({ kind, slots, rack }) => {
             {slots.map((s, i) => (
               <TableRow key={s.cellId || s.id || i}>
                 <TableCell>{i + 1}</TableCell>
+                <TableCell><b>{s.slotCode || s.cellCode || '—'}</b></TableCell>
                 <TableCell><SlotStatusChip slot={s} /></TableCell>
                 <TableCell><SlotLoadCell slot={s} capacityKg={null} /></TableCell>
                 <TableCell>{dims(s)}</TableCell>
@@ -1222,6 +1226,8 @@ const RackSlotsTable = ({ kind, slots, rack }) => {
 
   if (kind === 'PALLET') {
     const occupiedCount = slots.filter((s) => s.occupied).length;
+    const palletDims = (s) => `${s.lengthCm ?? '—'}×${s.widthCm ?? '—'}`;
+    const maxH = (s) => (s.maxHeightCm != null ? `${s.maxHeightCm} см` : '— (без ограничения)');
     return (
       <>
         {rackCapacityKg != null && (
@@ -1235,18 +1241,22 @@ const RackSlotsTable = ({ kind, slots, rack }) => {
           <TableHead>
             <TableRow>
               <TableCell sx={{ width: 60 }}>№</TableCell>
+              <TableCell>Код</TableCell>
               <TableCell>Статус</TableCell>
               <TableCell>Загрузка</TableCell>
-              <TableCell>Габариты Д×Ш×В, см</TableCell>
+              <TableCell>Поддон Д×Ш, см</TableCell>
+              <TableCell>Макс. высота груза</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {slots.map((s, i) => (
               <TableRow key={s.placeId || s.id || i}>
                 <TableCell>{i + 1}</TableCell>
+                <TableCell><b>{s.slotCode || s.cellCode || '—'}</b></TableCell>
                 <TableCell><SlotStatusChip slot={s} /></TableCell>
                 <TableCell><SlotLoadCell slot={s} capacityKg={null} /></TableCell>
-                <TableCell>{dims(s)}</TableCell>
+                <TableCell>{palletDims(s)}</TableCell>
+                <TableCell>{maxH(s)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

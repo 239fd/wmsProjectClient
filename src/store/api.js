@@ -41,7 +41,6 @@ api.interceptors.request.use(
         config.headers['X-Warehouse-Id'] = user.warehouseId;
       }
     } catch (e) {
-      // ignore — user not in localStorage yet
     }
     const generationMode = localStorage.getItem('generationMode');
     if (generationMode && !config.headers['X-Generation-Mode']) {

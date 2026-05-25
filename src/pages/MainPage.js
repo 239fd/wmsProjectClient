@@ -40,11 +40,13 @@ const ALL_ACTIONS = [
   { key: 'organization',label: 'Организация',      desc: 'Реквизиты и склады',            path: '/main/organization',icon: BusinessIcon, color: '#37474f', allowed: ['DIRECTOR'] },
 ];
 
-const ROLE_LABEL = { WORKER: 'Работник', ACCOUNTANT: 'Бухгалтер', DIRECTOR: 'Директор' };
+const ROLE_LABEL = { WORKER: 'Кладовщик', ACCOUNTANT: 'Бухгалтер', DIRECTOR: 'Заведующий' };
 
 const OP_TYPE_LABEL = {
   RECEIPT: 'Приёмка',
   SHIP: 'Отгрузка',
+  SHIPMENT: 'Отгрузка',
+  STAGING: 'Размещение',
   TRANSFER: 'Перемещение',
   WRITE_OFF: 'Списание',
   WRITEOFF: 'Списание',

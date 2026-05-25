@@ -18,6 +18,10 @@ const shipRequestService = {
     return httpService.post(API_ENDPOINTS.OPERATIONS.SHIP_REQUESTS, payload);
   },
 
+  async addItems(requestId, items) {
+    return httpService.post(API_ENDPOINTS.OPERATIONS.SHIP_REQUEST_ITEMS(requestId), { items });
+  },
+
   async pick(requestId, payload) {
 
     return httpService.post(API_ENDPOINTS.OPERATIONS.SHIP_REQUEST_PICK(requestId), payload);
@@ -27,9 +31,13 @@ const shipRequestService = {
     return httpService.post(API_ENDPOINTS.OPERATIONS.SHIP_REQUEST_UNPICK(requestId), payload);
   },
 
-  async complete(requestId, { mode } = {}) {
+  async complete(requestId, { mode, manualFields } = {}) {
     const headers = mode ? { 'X-Generation-Mode': mode } : {};
-    return httpService.post(API_ENDPOINTS.OPERATIONS.SHIP_REQUEST_COMPLETE(requestId), {}, { headers });
+    return httpService.post(
+      API_ENDPOINTS.OPERATIONS.SHIP_REQUEST_COMPLETE(requestId),
+      manualFields || {},
+      { headers }
+    );
   },
 
   async cancel(requestId) {

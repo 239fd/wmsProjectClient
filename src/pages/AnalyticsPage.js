@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box, Typography, Grid, Paper, Card, CardContent, Tabs, Tab, Chip, Skeleton, Alert,
-  MenuItem, Select, InputLabel, FormControl, LinearProgress,
+  MenuItem, Select, InputLabel, FormControl, LinearProgress, CircularProgress,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, Stack,
   TextField, Button,
 } from '@mui/material';
@@ -53,7 +53,7 @@ const OP_TYPE = {
 };
 const opMeta = (key) => OP_TYPE[key] || { label: key, color: '#616161' };
 
-const ROLE_LABEL = { WORKER: 'Работник', ACCOUNTANT: 'Бухгалтер', DIRECTOR: 'Директор' };
+const ROLE_LABEL = { WORKER: 'Кладовщик', ACCOUNTANT: 'Бухгалтер', DIRECTOR: 'Заведующий' };
 
 const formatDateIso = (date) => {
   const d = new Date(date);
@@ -188,6 +188,24 @@ const AnalyticsPage = () => {
 
   useEffect(() => { loadOverview(); }, [loadOverview]);
 
+  const [abcRecalcBusy, setAbcRecalcBusy] = useState(false);
+  const handleAbcRecalculate = useCallback(async () => {
+    setAbcRecalcBusy(true);
+    try {
+      const result = await analyticsService.runAbcAnalysis();
+      const a = result?.class_a_count ?? 0;
+      const b = result?.class_b_count ?? 0;
+      const c = result?.class_c_count ?? 0;
+      notify(`ABC пересчитан: A=${a}, B=${b}, C=${c}`, 'success');
+      const abc = await analyticsService.getAbcDistribution().catch(() => null);
+      if (abc) setAbcDistribution(abc);
+    } catch (err) {
+      notify(err?.message || 'Не удалось пересчитать ABC', 'error');
+    } finally {
+      setAbcRecalcBusy(false);
+    }
+  }, [notify]);
+
   useEffect(() => {
     if (!orgId) return;
     let cancelled = false;
@@ -306,6 +324,8 @@ const AnalyticsPage = () => {
               opsDynamics={opsDynamics}
               abcDistribution={abcDistribution}
               periodLabel={PERIODS.find((p) => p.value === period)?.label}
+              onAbcRecalculate={user?.role === 'DIRECTOR' ? handleAbcRecalculate : null}
+              abcRecalcBusy={abcRecalcBusy}
             />
           )}
           {tab === 1 && (
@@ -332,7 +352,7 @@ const AnalyticsPage = () => {
 
 const ABC_COLORS = { A: '#2e7d32', B: '#ed6c02', C: '#9e9e9e' };
 
-const AbcDonutCard = ({ data, loading }) => {
+const AbcDonutCard = ({ data, loading, onRecalculate, recalcBusy }) => {
   const counts = data?.productCountByClass || {};
   const qty = data?.quantityByClass || {};
   const totalProducts = Number(data?.totalProducts || 0);
@@ -350,7 +370,20 @@ const AbcDonutCard = ({ data, loading }) => {
 
   return (
     <Paper variant="outlined" sx={{ p: 3, borderRadius: 3, height: '100%' }}>
-      <Typography variant="subtitle1" fontWeight={700} mb={2}>ABC-распределение товаров</Typography>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
+        <Typography variant="subtitle1" fontWeight={700}>ABC-распределение товаров</Typography>
+        {onRecalculate && (
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={onRecalculate}
+            disabled={recalcBusy}
+            startIcon={recalcBusy ? <CircularProgress size={14} color="inherit" /> : null}
+          >
+            {recalcBusy ? 'Пересчёт…' : 'Пересчитать'}
+          </Button>
+        )}
+      </Stack>
       {loading ? (
         <Skeleton variant="circular" width={160} height={160} sx={{ mx: 'auto' }} />
       ) : totalProducts === 0 ? (
@@ -409,7 +442,8 @@ const AbcDonutCard = ({ data, loading }) => {
   );
 };
 
-const OverviewTab = ({ loading, warehousesSummary, opsDynamics, abcDistribution, periodLabel }) => {
+const OverviewTab = ({ loading, warehousesSummary, opsDynamics, abcDistribution, periodLabel,
+                       onAbcRecalculate, abcRecalcBusy }) => {
 
   const warehousesList = useMemo(() => {
     if (!warehousesSummary) return null;
@@ -511,7 +545,12 @@ const OverviewTab = ({ loading, warehousesSummary, opsDynamics, abcDistribution,
           )}
         </Grid>
         <Grid size={{ xs: 12, md: 5 }}>
-          <AbcDonutCard data={abcDistribution} loading={loading} />
+          <AbcDonutCard
+            data={abcDistribution}
+            loading={loading}
+            onRecalculate={onAbcRecalculate}
+            recalcBusy={abcRecalcBusy}
+          />
         </Grid>
       </Grid>
 
@@ -817,7 +856,7 @@ const EmployeesTab = ({ orgId, opsDynamics }) => {
     return (
       <Box sx={{ p: 3 }}>
         <Alert severity="info">
-          Аналитика по сотрудникам доступна только директору.
+          Аналитика по сотрудникам доступна только заведующему.
         </Alert>
       </Box>
     );

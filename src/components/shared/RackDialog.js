@@ -72,16 +72,7 @@ const RackDialog = ({ open, onClose, onSave, initialData = null }) => {
               onChange={handleChange}
               fullWidth
               required
-              helperText="Сколько полок на стеллаже"
-            />
-            <TextField
-              label="Грузоподъемность одной полки (кг)"
-              name="shelf_capacity_kg"
-              type="number"
-              value={form.shelf_capacity_kg}
-              onChange={handleChange}
-              fullWidth
-              required
+              helperText="Сколько полок на стеллаже. Общая грузоподъёмность задана на уровне стеллажа."
             />
           </>
         );
@@ -96,15 +87,7 @@ const RackDialog = ({ open, onClose, onSave, initialData = null }) => {
               onChange={handleChange}
               fullWidth
               required
-              helperText="Сколько ячеек на стеллаже"
-            />
-            <TextField
-              label="Максимальный вес одной ячейки (кг)"
-              name="max_weight_kg"
-              type="number"
-              value={form.max_weight_kg}
-              onChange={handleChange}
-              fullWidth
+              helperText="Сколько ячеек на стеллаже. Общая грузоподъёмность задана на уровне стеллажа."
             />
           </>
         );

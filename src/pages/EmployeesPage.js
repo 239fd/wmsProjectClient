@@ -26,7 +26,7 @@ import { TableSkeleton } from '../components/shared/LoadingSkeleton';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { invitationSchema } from '../validation/schemas';
 
-const ROLE_LABELS = { WORKER: 'Работник', ACCOUNTANT: 'Бухгалтер', DIRECTOR: 'Директор' };
+const ROLE_LABELS = { WORKER: 'Кладовщик', ACCOUNTANT: 'Бухгалтер', DIRECTOR: 'Заведующий' };
 const ROLE_COLORS = { WORKER: 'primary', ACCOUNTANT: 'secondary', DIRECTOR: 'error' };
 
 const STATUS_FILTERS = [
@@ -203,9 +203,9 @@ const EmployeesPage = () => {
                 variant="outlined"
               >
                 <MenuItem value="">Все роли</MenuItem>
-                <MenuItem value="WORKER">Работник</MenuItem>
+                <MenuItem value="WORKER">Кладовщик</MenuItem>
                 <MenuItem value="ACCOUNTANT">Бухгалтер</MenuItem>
-                <MenuItem value="DIRECTOR">Директор</MenuItem>
+                <MenuItem value="DIRECTOR">Заведующий</MenuItem>
               </Select>
             </FormControl>
             <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -384,7 +384,7 @@ const EmployeesPage = () => {
                     <FormControl fullWidth error={!!inviteErrors.role}>
                       <InputLabel>Роль</InputLabel>
                       <Select {...field} label="Роль" variant="outlined" disabled={inviteBusy}>
-                        <MenuItem value="WORKER">Работник</MenuItem>
+                        <MenuItem value="WORKER">Кладовщик</MenuItem>
                         <MenuItem value="ACCOUNTANT">Бухгалтер</MenuItem>
                       </Select>
                     </FormControl>

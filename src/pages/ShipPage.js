@@ -25,6 +25,7 @@ import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
 import { TableSkeleton } from '../components/shared/LoadingSkeleton';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import CompleteShipmentDialog from '../components/shared/CompleteShipmentDialog';
 import GenerationModeCheckbox from '../components/shared/GenerationModeCheckbox';
 import { shipRequestSchema } from '../validation/schemas';
 import FormWizard from '../components/shared/FormWizard';
@@ -89,6 +90,12 @@ const ShipPage = () => {
   const [pickFormByItem, setPickFormByItem] = useState({});
 
   const [confirm, setConfirm] = useState({ open: false, action: null });
+  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [addItemOpen, setAddItemOpen] = useState(false);
+  const [addItemProduct, setAddItemProduct] = useState(null);
+  const [addItemQty, setAddItemQty] = useState('');
+  const [addItemOptions, setAddItemOptions] = useState([]);
+  const [addItemSearchBusy, setAddItemSearchBusy] = useState(false);
   const [scanSku, setScanSku] = useState('');
   const [scanBusy, setScanBusy] = useState(false);
   const [genMode, setGenMode] = useState(
@@ -186,16 +193,54 @@ const ShipPage = () => {
     }
   };
 
-  const handleComplete = async () => {
+  const handleComplete = async (manualFields = {}) => {
     setDetailBusy(true);
     try {
-      await shipRequestService.complete(detailRequest.requestId, { mode: genMode });
+      await shipRequestService.complete(detailRequest.requestId, { mode: genMode, manualFields });
       notify('Заявка завершена, документы сгенерированы');
       setDetailRequest(null);
-      setConfirm({ open: false, action: null });
+      setCompleteDialogOpen(false);
       await loadAll();
     } catch (err) {
       notify(err.message || 'Не удалось завершить заявку', 'error');
+    } finally {
+      setDetailBusy(false);
+    }
+  };
+
+  const handleAddItemSearch = async (q) => {
+    if (!q || q.length < 2) { setAddItemOptions([]); return; }
+    setAddItemSearchBusy(true);
+    try {
+      const res = await productService.searchProducts(q);
+      setAddItemOptions(Array.isArray(res) ? res : (res?.content || []));
+    } catch { setAddItemOptions([]); }
+    finally { setAddItemSearchBusy(false); }
+  };
+
+  const handleAddItem = async () => {
+    if (!addItemProduct) {
+      notify('Выберите товар', 'warning');
+      return;
+    }
+    if (!addItemQty || Number(addItemQty) <= 0) {
+      notify('Укажите количество', 'warning');
+      return;
+    }
+    setDetailBusy(true);
+    try {
+      await shipRequestService.addItems(detailRequest.requestId, [
+        { productId: addItemProduct.productId, expectedQty: Number(addItemQty) },
+      ]);
+      notify('Позиция добавлена, партии зарезервированы');
+      setAddItemOpen(false);
+      setAddItemProduct(null);
+      setAddItemQty('');
+      setAddItemOptions([]);
+      await loadDetail(detailRequest.requestId);
+      await loadAll();
+    } catch (err) {
+      notify(err.message || 'Не удалось добавить позицию', 'error');
     } finally {
       setDetailBusy(false);
     }
@@ -336,7 +381,7 @@ const ShipPage = () => {
                         <TableCell>
                           <Typography>{r.recipientName || '—'}</Typography>
                           {r.recipientInn && (
-                            <Typography variant="caption" color="text.secondary">ИНН: {r.recipientInn}</Typography>
+                            <Typography variant="caption" color="text.secondary">УНП: {r.recipientInn}</Typography>
                           )}
                         </TableCell>
                         <TableCell>{whName}</TableCell>
@@ -427,7 +472,7 @@ const ShipPage = () => {
                     <Typography>{detailRequest.recipientAddress || '—'}</Typography>
                   </Grid>
                   <Grid size={{ xs: 6, md: 3 }}>
-                    <Typography variant="caption" color="text.secondary">ИНН</Typography>
+                    <Typography variant="caption" color="text.secondary">УНП</Typography>
                     <Typography>{detailRequest.recipientInn || '—'}</Typography>
                   </Grid>
                   <Grid size={{ xs: 6, md: 3 }}>
@@ -454,7 +499,20 @@ const ShipPage = () => {
 
                 <Divider sx={{ my: 2 }} />
 
-                <Typography variant="subtitle1" fontWeight={700} mb={1}>Позиции</Typography>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                  <Typography variant="subtitle1" fontWeight={700}>Позиции</Typography>
+                  {(detailRequest.status === 'PICKING' || detailRequest.status === 'PLANNED') && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<AddIcon />}
+                      disabled={detailBusy}
+                      onClick={() => { setAddItemProduct(null); setAddItemQty(''); setAddItemOptions([]); setAddItemOpen(true); }}
+                    >
+                      Добавить позицию
+                    </Button>
+                  )}
+                </Stack>
 
                 {(detailRequest.status === 'PICKING' || detailRequest.status === 'PLANNED')
                   && (detailRequest.items || []).length > 0 && (
@@ -633,7 +691,7 @@ const ShipPage = () => {
                       variant="contained"
                       color="success"
                       startIcon={<CheckCircleIcon />}
-                      onClick={() => setConfirm({ open: true, action: 'complete' })}
+                      onClick={() => setCompleteDialogOpen(true)}
                       disabled={detailBusy || Number(detailRequest.progress ?? 0) < 100}
                     >
                       Завершить
@@ -646,17 +704,76 @@ const ShipPage = () => {
         </Dialog>
 
         <ConfirmDialog
-          open={confirm.open}
+          open={confirm.open && confirm.action === 'cancel'}
           onClose={() => setConfirm({ open: false, action: null })}
-          onConfirm={confirm.action === 'complete' ? handleComplete : handleCancel}
+          onConfirm={handleCancel}
           busy={detailBusy}
-          title={confirm.action === 'complete' ? 'Завершить заявку' : 'Отменить заявку'}
-          message={confirm.action === 'complete'
-            ? 'Завершить заявку? Будет выполнена отгрузка с генерацией документов (waybill, release-order).'
-            : 'Отменить заявку? Все резервы будут освобождены.'}
-          confirmText={confirm.action === 'complete' ? 'Завершить' : 'Отменить заявку'}
-          confirmColor={confirm.action === 'complete' ? 'success' : 'error'}
+          title="Отменить заявку"
+          message="Отменить заявку? Все резервы будут освобождены."
+          confirmText="Отменить заявку"
+          confirmColor="error"
         />
+
+        <CompleteShipmentDialog
+          open={completeDialogOpen}
+          onClose={() => setCompleteDialogOpen(false)}
+          onSubmit={handleComplete}
+          shipmentType={detailRequest?.shipmentType || 'DOMESTIC'}
+          busy={detailBusy}
+        />
+
+        <Dialog
+          open={addItemOpen}
+          onClose={() => !detailBusy && setAddItemOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Добавить позицию в заявку</DialogTitle>
+          <DialogContent dividers>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Alert severity="info">
+                Система зарезервирует партии под добавленное количество по стратегии заявки.
+              </Alert>
+              <Autocomplete
+                options={addItemOptions}
+                value={addItemProduct}
+                getOptionLabel={(o) => `${o.name || ''}${o.sku ? ` (${o.sku})` : ''}`}
+                isOptionEqualToValue={(o, v) => o.productId === v.productId}
+                loading={addItemSearchBusy}
+                onInputChange={(_, q) => handleAddItemSearch(q)}
+                onChange={(_, val) => setAddItemProduct(val)}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Поиск товара по названию или SKU"
+                    placeholder="Введите минимум 2 символа"
+                    autoFocus
+                  />
+                )}
+                noOptionsText="Начните вводить, чтобы найти товар"
+              />
+              <TextField
+                label="Количество"
+                type="number"
+                fullWidth
+                value={addItemQty}
+                onChange={(e) => setAddItemQty(e.target.value)}
+                inputProps={{ step: '0.01', min: '0' }}
+                disabled={!addItemProduct}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAddItemOpen(false)} disabled={detailBusy}>Отмена</Button>
+            <Button
+              variant="contained"
+              onClick={handleAddItem}
+              disabled={detailBusy || !addItemProduct || !addItemQty || Number(addItemQty) <= 0}
+            >
+              Добавить
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </Box>
   );
@@ -776,7 +893,7 @@ const CreateRequestDialog = ({ open, onClose, warehouses, userWarehouseId, busy,
       </Grid>
       <Grid size={{ xs: 12, md: 3 }}>
         <TextField
-          label="ИНН получателя"
+          label="УНП получателя"
           fullWidth disabled={busy}
           {...register('recipientInn')}
         />
@@ -825,8 +942,6 @@ const CreateRequestDialog = ({ open, onClose, warehouses, userWarehouseId, busy,
                   onChange={(e) => {
                     const next = e.target.checked ? 'EXPORT' : 'DOMESTIC';
                     field.onChange(next);
-                    // При переключении сбрасываем валюту на разумный default,
-                    // чтобы yup-валидация не блокировала пользователя сразу.
                     if (next === 'EXPORT' && getValues('currency') === 'BYN') {
                       reset({ ...getValues(), shipmentType: 'EXPORT', currency: 'USD' });
                     } else if (next === 'DOMESTIC') {
@@ -1061,7 +1176,7 @@ const CreateRequestDialog = ({ open, onClose, warehouses, userWarehouseId, busy,
             <Typography variant="caption" color="text.secondary">Получатель</Typography>
             <Typography fontWeight={600}>{watchedAll.recipientName || '—'}</Typography>
             {watchedAll.recipientInn && (
-              <Typography variant="caption" color="text.secondary">ИНН: {watchedAll.recipientInn}</Typography>
+              <Typography variant="caption" color="text.secondary">УНП: {watchedAll.recipientInn}</Typography>
             )}
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>

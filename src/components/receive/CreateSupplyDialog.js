@@ -351,7 +351,7 @@ const CreateSupplyDialog = ({ open, onClose, onSaved, supply = null }) => {
                 options={supplierOptions}
                 value={selectedSupplierOption}
                 getOptionLabel={(opt) => opt
-                  ? `${opt.name}${opt.unp ? ` (ИНН ${opt.unp})` : ''}`
+                  ? `${opt.name}${opt.unp ? ` (УНП ${opt.unp})` : ''}`
                   : ''}
                 isOptionEqualToValue={(a, b) => a?.id === b?.id}
                 onChange={(_, val) => {
@@ -563,10 +563,11 @@ const SupplyItemRow = ({ item, index, onPatch, onRemove, disableRemove }) => {
         </Select>
       </FormControl>
       <TextField
-        size="small" label="Ед./упак." type="number" value={item.unitsPerPackage || '1'}
+        size="small" label="шт. в 1 упак." type="number" value={item.unitsPerPackage || '1'}
         onChange={(e) => onPatch({ unitsPerPackage: e.target.value })}
         inputProps={{ min: '1', step: '1' }}
-        sx={{ width: 110 }}
+        sx={{ width: 150 }}
+        InputLabelProps={{ shrink: true }}
       />
       <FormControl size="small" sx={{ minWidth: 150 }}>
         <InputLabel>Условия</InputLabel>

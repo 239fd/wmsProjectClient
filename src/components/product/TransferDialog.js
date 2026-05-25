@@ -101,7 +101,7 @@ const TransferDialog = ({ open, onClose, product, sourceStock, onTransferred }) 
         notes: notes || null,
       };
       const res = await productService.transferProduct(payload);
-      notify(`Перемещено ${qtyPacks} упак. (${qtyUnits} шт.) в ячейку ${String(targetCell.id).slice(0, 8)}`);
+      notify(`Перемещено ${qtyPacks} упак. (${qtyUnits} шт.) в ячейку ${targetCell.slotCode || targetCell.cellCode || String(targetCell.id).slice(0, 8)}`);
       onTransferred?.(res);
       onClose?.();
     } catch (ex) {
@@ -129,7 +129,7 @@ const TransferDialog = ({ open, onClose, product, sourceStock, onTransferred }) 
           </Typography>
 
           <Alert severity="info">
-            В ячейке <b>{sourceStock.cellCode
+            В ячейке <b>{sourceStock.slotCode || sourceStock.cellCode
               || (sourceStock.cellId ? String(sourceStock.cellId).slice(0, 8) : 'без ячейки')}</b>:
             <b> {sourcePackages}</b> упак. (= <b>{sourceAvailable}</b> шт.)
             {sourceReserved > 0 ? ` · резерв: ${sourceReserved} шт.` : ''}.
@@ -170,10 +170,11 @@ const TransferDialog = ({ open, onClose, product, sourceStock, onTransferred }) 
             groupBy={(opt) => `${opt.rackName} · ${opt.rackKind} · ${opt.rackStorageConditions || '—'}`}
             getOptionLabel={(opt) => {
               if (!opt) return '';
+              const code = opt.slotCode || opt.cellCode || String(opt.id).slice(0, 8);
               const wt = opt.maxWeightKg ? ` · до ${opt.maxWeightKg}кг` : '';
               const sz = opt.lengthCm
                 ? ` · ${opt.lengthCm}×${opt.widthCm}×${opt.heightCm}см` : '';
-              return `${String(opt.id).slice(0, 8)}${wt}${sz}`;
+              return `${code}${wt}${sz}`;
             }}
             isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
             renderInput={(params) => (

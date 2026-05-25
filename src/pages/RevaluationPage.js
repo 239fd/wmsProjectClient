@@ -307,11 +307,12 @@ const RevaluationPage = () => {
                       <InputLabel>Комиссия</InputLabel>
                       <Select
                         {...field}
+                        value={Array.isArray(field.value) ? field.value : []}
                         multiple
                         label="Комиссия"
                         variant="outlined"
                         disabled={busy}
-                        renderValue={(selected) => `${selected.length} участник(а)`}
+                        renderValue={(selected) => `${(selected || []).length} участник(а)`}
                       >
                         {employees.map((emp) => (
                           <MenuItem key={emp.userId} value={emp.userId}>
@@ -332,7 +333,7 @@ const RevaluationPage = () => {
                   error={!!errors.notes}
                   helperText={errors.notes?.message}
                 />
-                <GenerationModeCheckbox />
+                <GenerationModeCheckbox docType="revaluation-act" />
                 <Alert severity="info" sx={{ mt: 1 }}>
                   После переоценки автоматически генерируется акт (ПЕР). Скачать акт можно
                   в разделе «Документы».

@@ -57,7 +57,7 @@ const CreateSupplierInlineDialog = ({ open, onClose, onCreated }) => {
             autoFocus
           />
           <TextField
-            label="ИНН (9 цифр)"
+            label="УНП (9 цифр)"
             fullWidth size="small"
             {...register('unp')}
             error={!!errors.unp}

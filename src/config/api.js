@@ -58,6 +58,8 @@ export const API_ENDPOINTS = {
     PALLETS: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/pallets`,
     SLOTS: (rackId) => `${API_BASE_URL}/api/racks/${rackId}/slots`,
     CELL_BY_ID: (cellId) => `${API_BASE_URL}/api/racks/cells/${cellId}`,
+    CELL_BY_CODE: (slotCode, warehouseId) =>
+      `${API_BASE_URL}/api/racks/cells/by-code/${encodeURIComponent(slotCode)}?warehouseId=${warehouseId}`,
     CELLS_FLAT: (warehouseId) => `${API_BASE_URL}/api/racks/warehouse/${warehouseId}/cells-flat`,
   },
 
@@ -101,6 +103,7 @@ export const API_ENDPOINTS = {
     SHIP_REQUEST_PICK: (id) => `${API_BASE_URL}/api/operations/ship-requests/${id}/pick`,
     SHIP_REQUEST_COMPLETE: (id) => `${API_BASE_URL}/api/operations/ship-requests/${id}/complete`,
     SHIP_REQUEST_UNPICK: (id) => `${API_BASE_URL}/api/operations/ship-requests/${id}/unpick`,
+    SHIP_REQUEST_ITEMS: (id) => `${API_BASE_URL}/api/operations/ship-requests/${id}/items`,
   },
 
   RECEIPT_SESSIONS: {
@@ -125,6 +128,7 @@ export const API_ENDPOINTS = {
   INVENTORY_CHECK: {
     START: `${API_BASE_URL}/api/inventory-check/start`,
     START_STRUCTURED: `${API_BASE_URL}/api/inventory-check/start-structured`,
+    ACTIVE: `${API_BASE_URL}/api/inventory-check/active`,
     BY_ID: (sessionId) => `${API_BASE_URL}/api/inventory-check/${sessionId}`,
     RECORD: (sessionId) => `${API_BASE_URL}/api/inventory-check/${sessionId}/record`,
     COMPLETE: (sessionId) => `${API_BASE_URL}/api/inventory-check/${sessionId}/complete`,
@@ -138,6 +142,7 @@ export const API_ENDPOINTS = {
     INVENTORY_COMPARE: `${API_BASE_URL}/api/analytics/inventory/compare`,
     OPERATIONS_SUMMARY: `${API_BASE_URL}/api/analytics/operations/summary`,
     ABC_DISTRIBUTION: `${API_BASE_URL}/api/analytics/abc-distribution`,
+    ABC_RUN: `${API_BASE_URL}/api/analytics/abc-analysis/run`,
     EXPIRING_PRODUCTS: `${API_BASE_URL}/api/analytics/expiring-products`,
     WAREHOUSES_ALL: `${API_BASE_URL}/api/warehouses/analytics`,
     WAREHOUSE_BY_ID: (warehouseId) => `${API_BASE_URL}/api/warehouses/analytics/${warehouseId}`,

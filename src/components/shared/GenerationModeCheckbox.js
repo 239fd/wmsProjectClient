@@ -7,14 +7,18 @@ import httpService from '../../services/httpService';
 const readDefault = () =>
   localStorage.getItem('generationMode') === 'rpa' ? 'rpa' : 'auto';
 
-export default function GenerationModeCheckbox({ value, onChange, disabled = false }) {
+const PDF_ONLY_TYPES = new Set(['picking-list', 'placement-list', 'analytics-report', 'revaluation-act', 'receipt-act']);
+
+export default function GenerationModeCheckbox({ value, onChange, disabled = false, docType }) {
   const [internal, setInternal] = useState(readDefault);
   const [available, setAvailable] = useState(true);
   const [reason, setReason] = useState('');
 
-  const current = value !== undefined ? value : internal;
+  const isPdfOnly = docType && PDF_ONLY_TYPES.has(docType);
+  const current = isPdfOnly ? 'auto' : (value !== undefined ? value : internal);
 
   useEffect(() => {
+    if (isPdfOnly) return undefined;
     let cancelled = false;
     httpService
       .get(API_ENDPOINTS.DOCUMENTS?.RPA_HEALTH || '/api/documents/rpa/health')
@@ -45,6 +49,8 @@ export default function GenerationModeCheckbox({ value, onChange, disabled = fal
     if (value === undefined) setInternal(next);
   };
 
+  if (isPdfOnly) return null;
+
   const tip = available
     ? 'Документ будет заполнен через Python rpa-service (реальный .xlsx / .docx из шаблона). Если шаблона нет — автоматически переключится на программный канал (PDF).'
     : reason || 'Python rpa-service сейчас недоступен. Будет использован программный канал (PDF).';
@@ -60,7 +66,7 @@ export default function GenerationModeCheckbox({ value, onChange, disabled = fal
               onChange={handleChange}
               icon={<SmartToyIcon fontSize="small" />}
               checkedIcon={<SmartToyIcon fontSize="small" color="primary" />}
-              disabled={disabled || !available}
+              disabled={disabled || !available || isPdfOnly}
             />
           }
           label="Заполнить через 1С / Office (RPA)"

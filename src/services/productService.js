@@ -119,9 +119,14 @@ const productService = {
     return httpService.get(API_ENDPOINTS.INVENTORY_CHECK.BY_ID(sessionId));
   },
 
-  async recordInventoryCount(sessionId, { productId, cellId, actualQuantity, notes }) {
+  async findActiveInventorySession() {
+    return httpService.get(API_ENDPOINTS.INVENTORY_CHECK.ACTIVE);
+  },
+
+  async recordInventoryCount(sessionId, { countId, productId, cellId, actualQuantity, notes }) {
     const qs = new URLSearchParams();
-    qs.set('productId', productId);
+    if (countId) qs.set('countId', countId);
+    if (productId) qs.set('productId', productId);
     if (cellId) qs.set('cellId', cellId);
     qs.set('actualQuantity', actualQuantity);
     if (notes) qs.set('notes', notes);

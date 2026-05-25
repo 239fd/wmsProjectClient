@@ -1,8 +1,8 @@
 export const ENUM_LABELS = {
   UserRole: {
-    WORKER:     { label: 'Работник',  color: 'default' },
+    WORKER:     { label: 'Кладовщик',  color: 'default' },
     ACCOUNTANT: { label: 'Бухгалтер', color: 'info' },
-    DIRECTOR:   { label: 'Директор',  color: 'primary' },
+    DIRECTOR:   { label: 'Заведующий',  color: 'primary' },
   },
 
   OrganizationStatus: {

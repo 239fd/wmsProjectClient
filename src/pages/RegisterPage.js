@@ -34,7 +34,7 @@ const RegisterPage = () => {
                 У меня есть приглашение
               </Typography>
               <Typography variant="caption" sx={{ opacity: 0.85 }}>
-                Регистрация по токену из email от директора
+                Регистрация по токену из email от заведующего
               </Typography>
             </Box>
           </Button>
@@ -53,7 +53,7 @@ const RegisterPage = () => {
                 Зарегистрировать новую компанию
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Стану директором и приглашу сотрудников
+                Стану заведующим и приглашу сотрудников
               </Typography>
             </Box>
           </Button>

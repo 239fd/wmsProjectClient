@@ -21,7 +21,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { selectUser } from '../store/slices/authSlice';
 import productService from '../services/productService';
-import { useWarehouses } from '../hooks';
+import { useWarehouses, useEmployees } from '../hooks';
 import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
@@ -48,6 +48,7 @@ const InventoryPage = () => {
 
   const [bootLoading, setBootLoading] = useState(true);
   const { data: warehouses } = useWarehouses();
+  const { data: employees } = useEmployees();
 
   const [session, setSession] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(false);
@@ -56,7 +57,13 @@ const InventoryPage = () => {
   const [startBusy, setStartBusy] = useState(false);
   const startForm = useForm({
     resolver: yupResolver(inventoryStartSchema),
-    defaultValues: { warehouseId: '', notes: '' },
+    defaultValues: {
+      warehouseId: '',
+      responsibleUserId: '',
+      reason: '',
+      commissionMembers: [],
+      notes: '',
+    },
     mode: 'onTouched',
   });
 
@@ -95,22 +102,43 @@ const InventoryPage = () => {
       setBootLoading(true);
       const storedSid = localStorage.getItem(ACTIVE_SESSION_KEY(userId));
       if (storedSid && !cancelled) await loadSession(storedSid);
+      if (!cancelled && !session) {
+        try {
+          const active = await productService.findActiveInventorySession();
+          if (!cancelled && active && active.sessionId
+              && (active.status === 'IN_PROGRESS' || active.status === 'ACTIVE')) {
+            localStorage.setItem(ACTIVE_SESSION_KEY(userId), active.sessionId);
+            setSession(active);
+          }
+        } catch {
+        }
+      }
       if (!cancelled) setBootLoading(false);
     })();
     return () => { cancelled = true; };
+
   }, [orgId, userId, loadSession]);
 
   const handleStartOpen = () => {
-    startForm.reset({ warehouseId: warehouses[0]?.warehouseId || '', notes: '' });
+    startForm.reset({
+      warehouseId: warehouses[0]?.warehouseId || '',
+      responsibleUserId: userId || '',
+      reason: '',
+      commissionMembers: [],
+      notes: '',
+    });
     setStartOpen(true);
   };
 
   const onStart = async (values) => {
     setStartBusy(true);
     try {
-      const res = await productService.startInventoryCheck({
+      const res = await productService.startInventoryCheckStructured({
         warehouseId: values.warehouseId,
         userId,
+        responsibleUserId: values.responsibleUserId || null,
+        reason: values.reason || null,
+        commissionMembers: values.commissionMembers?.length > 0 ? values.commissionMembers : null,
         notes: values.notes || null,
       });
       const sid = res?.sessionId;
@@ -140,6 +168,7 @@ const InventoryPage = () => {
     setRowBusyId(rec.countId);
     try {
       await productService.recordInventoryCount(session.sessionId, {
+        countId: rec.countId,
         productId: rec.productId,
         cellId: rec.cellId || null,
         actualQuantity: qty,
@@ -329,6 +358,7 @@ const InventoryPage = () => {
                         try {
                           for (const r of unfilled) {
                             await productService.recordInventoryCount(session.sessionId, {
+                              countId: r.countId,
                               productId: r.productId,
                               cellId: r.cellId || null,
                               actualQuantity: r.expectedQuantity ?? 0,
@@ -491,7 +521,7 @@ const InventoryPage = () => {
       </Box>
 
       {}
-      <Dialog open={startOpen} onClose={() => !startBusy && setStartOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog open={startOpen} onClose={() => !startBusy && setStartOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Начать сессию инвентаризации</DialogTitle>
         <form onSubmit={startForm.handleSubmit(onStart)} noValidate>
           <DialogContent>
@@ -516,6 +546,57 @@ const InventoryPage = () => {
                     {startForm.formState.errors.warehouseId && (
                       <FormHelperText>{startForm.formState.errors.warehouseId.message}</FormHelperText>
                     )}
+                  </FormControl>
+                )}
+              />
+              <TextField
+                label="Причина инвентаризации"
+                fullWidth
+                disabled={startBusy}
+                {...startForm.register('reason')}
+                helperText="Напр.: «Плановая годовая», «Смена МОЛ», «Контрольная проверка»"
+              />
+              <Controller
+                name="responsibleUserId"
+                control={startForm.control}
+                render={({ field }) => (
+                  <FormControl fullWidth>
+                    <InputLabel>Ответственный</InputLabel>
+                    <Select {...field} label="Ответственный" variant="outlined" disabled={startBusy}>
+                      <MenuItem value="">— не назначен —</MenuItem>
+                      {employees.map((emp) => (
+                        <MenuItem key={emp.userId} value={emp.userId}>
+                          {emp.username || emp.email} · {enumLabel('UserRole', emp.role)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+              />
+              <Controller
+                name="commissionMembers"
+                control={startForm.control}
+                render={({ field }) => (
+                  <FormControl fullWidth>
+                    <InputLabel>Комиссия</InputLabel>
+                    <Select
+                      {...field}
+                      value={Array.isArray(field.value) ? field.value : []}
+                      multiple
+                      label="Комиссия"
+                      variant="outlined"
+                      disabled={startBusy}
+                      renderValue={(selected) => `${(selected || []).length} участник(а)`}
+                    >
+                      {employees.map((emp) => (
+                        <MenuItem key={emp.userId} value={emp.userId}>
+                          {emp.username || emp.email} · {enumLabel('UserRole', emp.role)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    <FormHelperText>
+                      Председатель и члены комиссии (по НСБУ N 126).
+                    </FormHelperText>
                   </FormControl>
                 )}
               />

@@ -49,6 +49,10 @@ const analyticsService = {
     return httpService.get(API_ENDPOINTS.ANALYTICS.ABC_DISTRIBUTION);
   },
 
+  async runAbcAnalysis() {
+    return httpService.post(API_ENDPOINTS.ANALYTICS.ABC_RUN, {});
+  },
+
   async getExpiringProducts(withinDays = 30) {
     const url = `${API_ENDPOINTS.ANALYTICS.EXPIRING_PRODUCTS}?withinDays=${withinDays}`;
     return httpService.get(url);

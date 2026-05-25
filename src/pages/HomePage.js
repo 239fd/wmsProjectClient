@@ -6,21 +6,21 @@ import ApproveImage from '../assets/images/ApproveImage.svg';
 
 const sections = [
     {
-        title: 'Облачная WMS для вашего бизнеса',
-        description: 'Все, что нужно – в одной системе: поставки, отгрузки, склады и отчетность.',
+        title: 'Веб-WMS для вашего бизнеса',
+        description: 'Все в одной системе: приемка и отгрузка, перемещения, инвентаризация, переоценка и списание, документооборот, аналитика и ABC-анализ. Работает в любом современном браузере; разворачивается локально, на ваших серверах или в облаке.',
         image: null,
         imageLeft: false,
     },
     {
         title: 'WMS это',
         description:
-            'Система управления складом - это высокоэффективное программное решение, которое оптимизирует все процессы, связанные с хранением и движением товаров на складе. Основная цель WMS — повысить эффективность операций, минимизировать затраты и улучшить качество обслуживания клиентов.',
+            'Система управления складом — программное решение, которое автоматизирует приемку, размещение, отгрузку, инвентаризацию и учет остатков. Цель — ускорить операции, сократить ошибки и снизить издержки.',
         image: AnalyticsImage,
         imageLeft: true,
     },
     {
-        title: 'Особенности программы',
-        description: `Простая программа для склада, логистики ТМЦ и учета. Приемка и отгрузка товара, перемещения, инвентаризация и списание.\nКонтроль остатков.\nПоэкземплярный и партионный учет, учёт по сериям и срокам годности.\nРезервирование товара, адресное хранение, листы подбора, сверка комплектации.\nПоддержка нескольких складов.`,
+        title: 'Что внутри',
+        description: `Приемка, отгрузка, перемещения, инвентаризация, переоценка и списание.\nПартионный и поэкземплярный учет с FEFO/FIFO и контролем сроков годности.\nАдресное хранение: стеллажи и ячейки с учетом габаритов, веса и условий хранения (комната / охлаждение / холодильник / морозильник).\nРезервирование товара под заявку, листы подбора, акты расхождения.\nДокументы (ТН, ТТН, CMR, инвойс, приходные ордера, акты приемки / списания / переоценки / инвентаризации) — PDF из шаблонов или реальные .xlsx / .docx через RPA-канал в 1С и MS Office.\nИмпорт поставок из 1С (RPA) или JSON, аналитика и ABC-анализ.\nПоддержка нескольких складов и ролей: Кладовщик / Бухгалтер / Заведующий.`,
         image: ApproveImage,
         imageLeft: false,
     },
@@ -58,7 +58,7 @@ const HomePage = () => {
                                     color="text.secondary"
                                     sx={{ mb: 4, textAlign: { xs: 'center', md: 'left' } }}
                                 >
-                                    Управляйте складом, закупками и отчетностью в облаке. Просто. Надежно. Современно.
+                                    Управляйте складом, закупками и отчетностью прямо в браузере — с импортом из 1С и автозаполнением документов через RPA. Просто. Надежно. Современно.
                                 </Typography>
                                 <Box display="flex" gap={2} justifyContent={{ xs: 'center', md: 'flex-start' }}>
                                     <Button
@@ -121,7 +121,10 @@ const HomePage = () => {
                                     display: 'flex',
                                     flexDirection: 'column',
                                     justifyContent: 'center',
-                                    alignItems: {xs: 'center', md: section.imageLeft ? 'flex-end' : 'flex-start'}
+                                    alignItems: section.image
+                                        ? {xs: 'center', md: section.imageLeft ? 'flex-end' : 'flex-start'}
+                                        : 'stretch',
+                                    width: '100%',
                                 }}>
                                     <Typography
                                         variant="h4"
@@ -129,7 +132,9 @@ const HomePage = () => {
                                         gutterBottom
                                         sx={{
                                             fontWeight: 700,
-                                            textAlign: {xs: 'center', md: section.imageLeft ? 'right' : 'left'},
+                                            textAlign: section.image
+                                                ? {xs: 'center', md: section.imageLeft ? 'right' : 'left'}
+                                                : {xs: 'center', md: 'left'},
                                             mb: 1
                                         }}
                                     >
@@ -141,8 +146,10 @@ const HomePage = () => {
                                         sx={{
                                             whiteSpace: 'pre-line',
                                             fontSize: 17,
-                                            textAlign: {xs: 'center', md: section.imageLeft ? 'right' : 'left'},
-                                            maxWidth: 480,
+                                            textAlign: section.image
+                                                ? {xs: 'center', md: section.imageLeft ? 'right' : 'left'}
+                                                : {xs: 'center', md: 'left'},
+                                            ...(section.image ? { maxWidth: 480 } : { width: '100%' }),
                                         }}
                                     >
                                         {section.description}

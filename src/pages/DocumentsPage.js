@@ -26,6 +26,7 @@ const TYPE_LABEL = {
   'write-off-act':    'Акт списания',
   'invoice':          'Инвойс',
   'picking-list':     'Лист подбора',
+  'placement-list':   'Лист размещения',
 };
 
 const formatDate = (iso) => iso ? new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';

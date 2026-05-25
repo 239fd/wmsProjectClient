@@ -26,9 +26,9 @@ import OAuthButtons from '../components/shared/OAuthButtons';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const ROLE_LABELS = {
-  WORKER: 'Работник',
+  WORKER: 'Кладовщик',
   ACCOUNTANT: 'Бухгалтер',
-  DIRECTOR: 'Директор',
+  DIRECTOR: 'Заведующий',
 };
 
 const RegisterByInvitationPage = () => {

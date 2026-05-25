@@ -209,7 +209,7 @@ const SuppliesSection = ({ onPickReceive, refreshSignal = 0 }) => {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>External ID</TableCell>
+                    <TableCell>Внешний ID</TableCell>
                     <TableCell>Поставщик</TableCell>
                     <TableCell>Дата</TableCell>
                     <TableCell align="right">Позиций</TableCell>
@@ -237,7 +237,7 @@ const SuppliesSection = ({ onPickReceive, refreshSignal = 0 }) => {
                             {externalId || '—'}
                           </Typography>
                           {quantityOnly && (
-                            <Chip size="small" label="quantity-only" sx={{ mt: 0.5 }} />
+                            <Chip size="small" label="только кол-во" sx={{ mt: 0.5 }} />
                           )}
                         </TableCell>
                         <TableCell>{supplierName || '—'}</TableCell>

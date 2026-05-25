@@ -108,13 +108,13 @@ export const changePasswordSchema = yup.object({
 export const organizationSchema = yup.object({
     name: requiredString('Полное наименование обязательно'),
     shortName: optionalString(),
-    unp: yup.string().trim().required('ИНН обязателен').matches(/^\d{9}$/, 'ИНН — 9 цифр'),
+    unp: yup.string().trim().required('УНП обязателен').matches(/^\d{9}$/, 'УНП — 9 цифр'),
     address: requiredString('Адрес обязателен'),
 });
 
 export const supplierSchema = yup.object({
     name: requiredString('Название обязательно'),
-    unp: optionalString().matches(/^\d{9}$|^$/, { message: 'ИНН — 9 цифр', excludeEmptyString: true }),
+    unp: optionalString().matches(/^\d{9}$|^$/, { message: 'УНП — 9 цифр', excludeEmptyString: true }),
     contactPerson: optionalString(),
     phone: optionalString(),
     email: yup.string().trim().nullable().transform((v) => (v === '' ? null : v))
@@ -221,7 +221,11 @@ export const shipRequestSchema = yup.object({
         .required('Валюта обязательна'),
     documentLayout: yup.string().oneOf(['HORIZONTAL', 'VERTICAL']).default('HORIZONTAL'),
     domesticDocumentKind: yup.string().oneOf(['TN', 'TTN']).default('TN'),
-    recipientCountry: optionalString(),
+    recipientCountry: yup.string().trim().nullable().transform((v) => (v === '' ? null : v))
+        .when('shipmentType', {
+            is: 'EXPORT',
+            then: (s) => s.required('Для экспорта укажите страну получателя'),
+        }),
     recipientGln: optionalString(),
     items: yup.array().of(
         yup.object({
@@ -251,6 +255,9 @@ export const productCreateSchema = yup.object({
     barcode: optionalString().max(100, 'Штрих-код не более 100 символов'),
     category: optionalString().max(100, 'Категория не более 100 символов'),
     unitOfMeasure: optionalString().max(50, 'Ед. измерения не более 50 символов'),
+    price: yup.number().typeError('Цена — число').min(0, 'Цена не отрицательная')
+        .transform((v, orig) => (orig === '' || orig === null ? undefined : v))
+        .notRequired(),
     description: optionalString(),
 });
 
@@ -258,6 +265,19 @@ export const receiveWizardSchema = yup.object({
     warehouseId: requiredString('Выберите склад'),
     supplierId: optionalString(),
     supplyId: optionalString(),
+    contractNumber: optionalString(),
+    contractDate: yup.string().nullable().notRequired()
+        .transform((v) => (v === '' ? null : v))
+        .test('not-future', 'Дата договора не может быть позже сегодняшней', (v) => {
+            if (v == null) return true;
+            const d = parseDate(v);
+            if (d == null) return true;
+            const today = new Date();
+            today.setHours(23, 59, 59, 999);
+            return d.getTime() <= today.getTime();
+        }),
+    responsibleUserId: optionalString(),
+    commissionMembers: yup.array().of(yup.string()).default([]),
     items: yup.array().of(
         yup.object({
             productId: requiredString('Выберите товар'),
@@ -265,14 +285,48 @@ export const receiveWizardSchema = yup.object({
             unitsPerPackage: yup.number().typeError('Шт./упак. — число').min(1, 'Минимум 1')
                 .required('Шт./упак. обязательно')
                 .transform((v, orig) => (orig === '' || orig === null ? 1 : v)),
-            pricePerUnit: nonNegativeNumber('Цена не отрицательная'),
+            pricePerUnit: yup.number().typeError('Цена — число').min(0, 'Не отрицательная')
+                .nullable().transform((v, orig) => (orig === '' || orig === null ? null : v)),
             batchId: optionalString(),
             batchNumber: requiredString('№ партии обязателен'),
             expiryDate: requiredFutureOrTodayDate('Срок годности'),
-            packageLengthCm: positiveNumber('Длина > 0'),
-            packageWidthCm: positiveNumber('Ширина > 0'),
-            packageHeightCm: positiveNumber('Высота > 0'),
-            packageWeightKg: positiveNumber('Вес > 0'),
+            packagingType: yup.string().oneOf(['PALLET', 'BOX', 'CRATE', 'EACH']).default('BOX'),
+            palletType: yup.string().nullable()
+                .transform((v) => (v === '' || v === null ? null : v))
+                .when('packagingType', {
+                    is: 'PALLET',
+                    then: (s) => s.oneOf(['EUR', 'FIN', 'US', 'ASIA'], 'Выберите тип паллета')
+                        .required('Тип паллета обязателен'),
+                    otherwise: (s) => s.notRequired(),
+                }),
+            packageLengthCm: yup.number().typeError('Длина — число').nullable()
+                .transform((v, o) => (o === '' || o === null ? null : v))
+                .when('packagingType', {
+                    is: 'PALLET',
+                    then: (s) => s.notRequired(),
+                    otherwise: (s) => s.required('Длина обязательна').positive('Длина > 0'),
+                }),
+            packageWidthCm: yup.number().typeError('Ширина — число').nullable()
+                .transform((v, o) => (o === '' || o === null ? null : v))
+                .when('packagingType', {
+                    is: 'PALLET',
+                    then: (s) => s.notRequired(),
+                    otherwise: (s) => s.required('Ширина обязательна').positive('Ширина > 0'),
+                }),
+            packageHeightCm: yup.number().typeError('Высота — число').nullable()
+                .transform((v, o) => (o === '' || o === null ? null : v))
+                .when('packagingType', {
+                    is: 'PALLET',
+                    then: (s) => s.notRequired(),
+                    otherwise: (s) => s.required('Высота обязательна').positive('Высота > 0'),
+                }),
+            packageWeightKg: yup.number().typeError('Вес — число').nullable()
+                .transform((v, o) => (o === '' || o === null ? null : v))
+                .when('packagingType', {
+                    is: 'PALLET',
+                    then: (s) => s.notRequired(),
+                    otherwise: (s) => s.required('Вес обязателен').positive('Вес > 0'),
+                }),
             storageConditions: yup.string().oneOf(['ROOM', 'COOL', 'FRIDGE', 'FREEZER'])
                 .required('Условия хранения обязательны'),
             cellId: optionalString(),
@@ -286,6 +340,7 @@ export const inventoryStartSchema = yup.object({
     warehouseId: requiredString('Выберите склад'),
     responsibleUserId: optionalString(),
     reason: optionalString(),
+    commissionMembers: yup.array().of(yup.string()).default([]),
     notes: optionalString(),
 });
 
