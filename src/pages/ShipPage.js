@@ -20,6 +20,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { selectUser } from '../store/slices/authSlice';
 import shipRequestService from '../services/shipRequestService';
 import productService from '../services/productService';
+import warehouseService from '../services/warehouseService';
 import { useWarehouses } from '../hooks';
 import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
@@ -85,6 +86,7 @@ const ShipPage = () => {
   const [createBusy, setCreateBusy] = useState(false);
 
   const [detailRequest, setDetailRequest] = useState(null);
+  const [cellCodeMap, setCellCodeMap] = useState({});
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailBusy, setDetailBusy] = useState(false);
   const [pickFormByItem, setPickFormByItem] = useState({});
@@ -126,17 +128,34 @@ const ShipPage = () => {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  const loadCellCodes = useCallback(async (warehouseId) => {
+    try {
+      const cells = await warehouseService.getAllCellsFlat(warehouseId);
+      const map = {};
+      (Array.isArray(cells) ? cells : []).forEach((c) => {
+        const id = c.cellId || c.id;
+        if (id && c.slotCode) map[String(id)] = c.slotCode;
+      });
+      setCellCodeMap(map);
+    } catch {
+      setCellCodeMap({});
+    }
+  }, []);
+
   const loadDetail = useCallback(async (requestId) => {
     setDetailLoading(true);
     try {
       const data = await shipRequestService.get(requestId);
       setDetailRequest(data);
+      if (data?.warehouseId) {
+        loadCellCodes(data.warehouseId);
+      }
     } catch (err) {
       notify(err.message || 'Не удалось загрузить заявку', 'error');
     } finally {
       setDetailLoading(false);
     }
-  }, [notify]);
+  }, [notify, loadCellCodes]);
 
   const filteredRequests = requests.filter((r) =>
     statusFilter === 'all' ? true : r.status === statusFilter
@@ -590,7 +609,9 @@ const ShipPage = () => {
                               </TableCell>
                               <TableCell>
                                 <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                                  {item.cellId ? String(item.cellId).slice(0, 8) + '…' : '—'}
+                                  {item.cellId
+                                    ? (cellCodeMap[String(item.cellId)] || String(item.cellId).slice(0, 8) + '…')
+                                    : '—'}
                                 </Typography>
                               </TableCell>
                               <TableCell>

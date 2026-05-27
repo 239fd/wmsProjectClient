@@ -317,14 +317,14 @@ export const receiveWizardSchema = yup.object({
                 .transform((v, o) => (o === '' || o === null ? null : v))
                 .when('packagingType', {
                     is: 'PALLET',
-                    then: (s) => s.notRequired(),
+                    then: (s) => s.required('Высота груза обязательна').positive('Высота > 0'),
                     otherwise: (s) => s.required('Высота обязательна').positive('Высота > 0'),
                 }),
             packageWeightKg: yup.number().typeError('Вес — число').nullable()
                 .transform((v, o) => (o === '' || o === null ? null : v))
                 .when('packagingType', {
                     is: 'PALLET',
-                    then: (s) => s.notRequired(),
+                    then: (s) => s.required('Вес паллета обязателен').positive('Вес > 0'),
                     otherwise: (s) => s.required('Вес обязателен').positive('Вес > 0'),
                 }),
             storageConditions: yup.string().oneOf(['ROOM', 'COOL', 'FRIDGE', 'FREEZER'])

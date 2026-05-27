@@ -20,6 +20,8 @@ import {
   AcUnit as AcUnitIcon,
   Inventory2 as Inventory2Icon,
   Layers as LayersIcon,
+  Check as CheckIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { useSearchParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
@@ -769,7 +771,7 @@ const OrganizationPage = () => {
                                                               Слотов пока нет
                                                             </Typography>
                                                           ) : (
-                                                            <RackSlotsTable kind={slotsData.kind} slots={slotsData.slots} rack={rack} />
+                                                            <RackSlotsTable kind={slotsData.kind} slots={slotsData.slots} rack={rack} onRenamed={() => loadSlots(rack.rackId)} />
                                                           )}
                                                         </Box>
                                                       </Collapse>
@@ -1143,7 +1145,74 @@ const SlotLoadCell = ({ slot, capacityKg }) => {
   );
 };
 
-const RackSlotsTable = ({ kind, slots, rack }) => {
+const SlotCodeCell = ({ slot, onRenamed }) => {
+  const { notify } = useSnackbar();
+  const slotId = slot.cellId || slot.shelfId || slot.placeId || slot.id;
+  const current = slot.slotCode || slot.cellCode || '';
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(current);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    const code = (value || '').trim();
+    if (!code || code === current) {
+      setEditing(false);
+      setValue(current);
+      return;
+    }
+    setBusy(true);
+    try {
+      await warehouseService.renameSlotCode(slotId, code);
+      notify('Код ячейки обновлён');
+      setEditing(false);
+      onRenamed?.();
+    } catch (err) {
+      notify(err?.data?.message || err?.message || 'Не удалось изменить код', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <Stack direction="row" alignItems="center" spacing={0.5}>
+        <b>{current || '—'}</b>
+        {slotId && (
+          <Tooltip title="Изменить код">
+            <IconButton size="small" onClick={() => { setValue(current); setEditing(true); }}>
+              <EditIcon sx={{ fontSize: 15 }} />
+            </IconButton>
+          </Tooltip>
+        )}
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack direction="row" alignItems="center" spacing={0.5}>
+      <TextField
+        size="small"
+        value={value}
+        autoFocus
+        disabled={busy}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') save();
+          if (e.key === 'Escape') { setEditing(false); setValue(current); }
+        }}
+        inputProps={{ maxLength: 32, style: { padding: '4px 8px', width: 90 } }}
+      />
+      <IconButton size="small" color="primary" onClick={save} disabled={busy}>
+        <CheckIcon sx={{ fontSize: 17 }} />
+      </IconButton>
+      <IconButton size="small" onClick={() => { setEditing(false); setValue(current); }} disabled={busy}>
+        <CloseIcon sx={{ fontSize: 17 }} />
+      </IconButton>
+    </Stack>
+  );
+};
+
+const RackSlotsTable = ({ kind, slots, rack, onRenamed }) => {
   const dims = (s) => `${s.lengthCm ?? '—'}×${s.widthCm ?? '—'}×${s.heightCm ?? '—'}`;
   const rackCapacityKg = rack?.maxWeightKg ?? null;
 
@@ -1172,7 +1241,7 @@ const RackSlotsTable = ({ kind, slots, rack }) => {
             {slots.map((s, i) => (
               <TableRow key={s.shelfId || s.id || i}>
                 <TableCell>{i + 1}</TableCell>
-                <TableCell><b>{s.slotCode || s.cellCode || '—'}</b></TableCell>
+                <TableCell><SlotCodeCell slot={s} onRenamed={onRenamed} /></TableCell>
                 <TableCell><SlotStatusChip slot={s} /></TableCell>
                 <TableCell><SlotLoadCell slot={s} capacityKg={null} /></TableCell>
                 <TableCell>{dims(s)}</TableCell>
@@ -1212,7 +1281,7 @@ const RackSlotsTable = ({ kind, slots, rack }) => {
             {slots.map((s, i) => (
               <TableRow key={s.cellId || s.id || i}>
                 <TableCell>{i + 1}</TableCell>
-                <TableCell><b>{s.slotCode || s.cellCode || '—'}</b></TableCell>
+                <TableCell><SlotCodeCell slot={s} onRenamed={onRenamed} /></TableCell>
                 <TableCell><SlotStatusChip slot={s} /></TableCell>
                 <TableCell><SlotLoadCell slot={s} capacityKg={null} /></TableCell>
                 <TableCell>{dims(s)}</TableCell>
@@ -1252,7 +1321,7 @@ const RackSlotsTable = ({ kind, slots, rack }) => {
             {slots.map((s, i) => (
               <TableRow key={s.placeId || s.id || i}>
                 <TableCell>{i + 1}</TableCell>
-                <TableCell><b>{s.slotCode || s.cellCode || '—'}</b></TableCell>
+                <TableCell><SlotCodeCell slot={s} onRenamed={onRenamed} /></TableCell>
                 <TableCell><SlotStatusChip slot={s} /></TableCell>
                 <TableCell><SlotLoadCell slot={s} capacityKg={null} /></TableCell>
                 <TableCell>{palletDims(s)}</TableCell>

@@ -12,7 +12,8 @@ import {
   MenuItem,
   Box,
   Typography,
-  Divider
+  Divider,
+  Alert
 } from '@mui/material';
 
 const rackTypes = [
@@ -119,6 +120,20 @@ const RackDialog = ({ open, onClose, onSave, initialData = null }) => {
     }
   };
 
+  const slotCodePreview = () => {
+    const base = (form.name || '').trim();
+    if (!base) return '';
+    const countRaw = form.kind === 'SHELF' ? form.shelf_count
+      : form.kind === 'CELL' ? form.cell_count
+        : form.kind === 'PALLET' ? form.pallet_place_count
+          : '';
+    const count = parseInt(countRaw, 10);
+    if (!Number.isInteger(count) || count <= 0) return '';
+    if (count === 1) return `${base}-1`;
+    if (count === 2) return `${base}-1, ${base}-2`;
+    return `${base}-1, ${base}-2 … ${base}-${count}`;
+  };
+
   const getDimensionsHelperText = () => {
     switch (form.kind) {
       case 'SHELF':
@@ -184,6 +199,13 @@ const RackDialog = ({ open, onClose, onSave, initialData = null }) => {
             Специфические параметры
           </Typography>
           {renderSpecificFields()}
+
+          {slotCodePreview() && (
+            <Alert severity="info" sx={{ py: 0.5 }}>
+              Коды ячеек сгенерируются автоматически: <b>{slotCodePreview()}</b>.
+              Их можно переименовать позже на странице организации.
+            </Alert>
+          )}
 
           <Divider />
           <Typography variant="subtitle2" color="text.secondary">

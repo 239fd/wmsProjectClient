@@ -21,6 +21,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { selectUser } from '../store/slices/authSlice';
 import productService from '../services/productService';
+import warehouseService from '../services/warehouseService';
 import { useWarehouses, useEmployees } from '../hooks';
 import { useSnackbar } from '../context/SnackbarContext';
 import EmptyState from '../components/shared/EmptyState';
@@ -52,6 +53,7 @@ const InventoryPage = () => {
 
   const [session, setSession] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(false);
+  const [cellCodeMap, setCellCodeMap] = useState({});
 
   const [startOpen, setStartOpen] = useState(false);
   const [startBusy, setStartBusy] = useState(false);
@@ -83,6 +85,19 @@ const InventoryPage = () => {
       const data = await productService.getInventorySession(sessionId);
       if (data?.status === 'IN_PROGRESS' || data?.status === 'ACTIVE') {
         setSession(data);
+        if (data?.warehouseId) {
+          try {
+            const cells = await warehouseService.getAllCellsFlat(data.warehouseId);
+            const map = {};
+            (Array.isArray(cells) ? cells : []).forEach((c) => {
+              const id = c.cellId || c.id;
+              if (id && c.slotCode) map[String(id)] = c.slotCode;
+            });
+            setCellCodeMap(map);
+          } catch {
+            setCellCodeMap({});
+          }
+        }
       } else {
         localStorage.removeItem(ACTIVE_SESSION_KEY(userId));
         setSession(null);
@@ -415,7 +430,9 @@ const InventoryPage = () => {
                               </TableCell>
                               <TableCell>
                                 <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                                  {rec.cellId ? String(rec.cellId).slice(0, 8) + '…' : '—'}
+                                  {rec.cellId
+                                    ? (cellCodeMap[String(rec.cellId)] || String(rec.cellId).slice(0, 8) + '…')
+                                    : '—'}
                                 </Typography>
                               </TableCell>
                               <TableCell align="right">{rec.expectedQuantity ?? '—'}</TableCell>
@@ -626,7 +643,19 @@ const InventoryPage = () => {
         busy={recordBusy}
         title={confirm.action === 'complete' ? 'Завершение сессии' : 'Отмена сессии'}
         message={confirm.action === 'complete'
-          ? 'Завершить сессию инвентаризации? Будет сформирован отчёт о расхождениях.'
+          ? (() => {
+              const unfilled = (session?.records || []).filter((r) => r.actualQuantity == null).length;
+              if (unfilled > 0) {
+                return (
+                  <>
+                    Не подсчитано позиций: <b>{unfilled}</b>. Они не будут проверены и останутся
+                    с учётным количеством. Сначала запишите факт или нажмите «Заполнить совпадающие».
+                    <br /><br />Всё равно завершить сессию? Будет сформирован отчёт о расхождениях.
+                  </>
+                );
+              }
+              return 'Завершить сессию инвентаризации? Будет сформирован отчёт о расхождениях.';
+            })()
           : 'Отменить сессию? Все записанные подсчёты будут отброшены.'}
         confirmText={confirm.action === 'complete' ? 'Завершить' : 'Отменить сессию'}
         confirmColor={confirm.action === 'complete' ? 'success' : 'error'}

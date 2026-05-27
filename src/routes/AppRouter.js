@@ -29,9 +29,6 @@ import AnalyticsPage from '../pages/AnalyticsPage';
 import SuppliersPage from '../pages/SuppliersPage';
 import DocumentsPage from '../pages/DocumentsPage';
 import ProductCardPage from '../pages/ProductCardPage';
-import AnalyticsSamplePage from '../pages/AnalyticsSamplePage';
-import InventorySamplePage from '../pages/InventorySamplePage';
-import OrganizationSamplePage from '../pages/OrganizationSamplePage';
 
 
 const ProtectedRoute = ({ children }) => {
@@ -95,11 +92,6 @@ const AppRouter = () => {
     <Routes>
       {}
       <Route path="/auth/callback" element={<OAuthCallbackPage />} />
-
-      {}
-      <Route path="/sample1" element={<AnalyticsSamplePage />} />
-      <Route path="/sample2" element={<InventorySamplePage />} />
-      <Route path="/sample3" element={<OrganizationSamplePage />} />
 
       {}
       <Route path="/" element={<GuestLayout />}>

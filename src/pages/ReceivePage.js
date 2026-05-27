@@ -304,13 +304,20 @@ const ReceivePage = () => {
             packageHeightCm: it.packageHeightCm ? Number(it.packageHeightCm) : null,
             packageWeightKg: it.packageWeightKg ? Number(it.packageWeightKg) : null,
             storageConditions: it.storageConditions || null,
+            palletType: it.palletType || null,
             notes: it.notes || null,
           };
         }),
       });
 
+      const formByProduct = new Map();
+      (values.items || []).forEach((fi) => {
+        if (fi.productId && !formByProduct.has(fi.productId)) {
+          formByProduct.set(fi.productId, fi);
+        }
+      });
       const sessionItems = (session.items || []).map((opItem, idx) => {
-        const formItem = values.items[idx] || {};
+        const formItem = formByProduct.get(opItem.productId) || values.items[idx] || {};
         return {
           operationId: opItem.operationId,
           productId: opItem.productId,
@@ -655,6 +662,15 @@ const ReceivePage = () => {
                       <input type="hidden" {...register(`items.${i}.productSku`)} />
                       <Typography variant="body2" fontWeight={600}>{watchedItems?.[i]?.productName || it.productName}</Typography>
                       <Typography variant="caption" color="text.secondary">{watchedItems?.[i]?.productSku || it.productSku}</Typography>
+                      {!(watchedItems?.[i]?.productId || it.productId) && (
+                        <Chip
+                          size="small"
+                          color="error"
+                          icon={<ReportProblemIcon />}
+                          label="Не сопоставлен — удалите строку и выберите товар выше"
+                          sx={{ mt: 0.5, maxWidth: '100%', '& .MuiChip-label': { whiteSpace: 'normal' } }}
+                        />
+                      )}
                     </TableCell>
                     <TableCell align="right">
                       <TextField
@@ -787,8 +803,6 @@ const ReceivePage = () => {
                                         { shouldValidate: false });
                                       setValue(`items.${i}.packageWidthCm`, String(d.widthCm),
                                         { shouldValidate: false });
-                                      setValue(`items.${i}.packageHeightCm`, String(d.heightCm),
-                                        { shouldValidate: false });
                                     }
                                   }}
                                 >
@@ -802,8 +816,24 @@ const ReceivePage = () => {
                               </FormControl>
                             )}
                           />
+                          <TextField
+                            size="small" label="Высота груза (см) *" type="number" sx={{ width: 160 }}
+                            inputProps={{ step: '0.1', min: '0' }}
+                            {...register(`items.${i}.packageHeightCm`)}
+                            error={!!errors.items?.[i]?.packageHeightCm}
+                            helperText={errors.items?.[i]?.packageHeightCm?.message
+                              || 'Полная высота загруженного паллета'}
+                          />
+                          <TextField
+                            size="small" label="Вес паллета (кг) *" type="number" sx={{ width: 160 }}
+                            inputProps={{ step: '0.001', min: '0' }}
+                            {...register(`items.${i}.packageWeightKg`)}
+                            error={!!errors.items?.[i]?.packageWeightKg}
+                            helperText={errors.items?.[i]?.packageWeightKg?.message
+                              || 'Вес одного загруженного паллета'}
+                          />
                           <Typography variant="caption" color="text.secondary">
-                            Габариты паллета подставятся из выбранного типа. Выберите паллет-место ниже.
+                            Габариты основания — из типа паллета. Выберите паллет-место ниже.
                           </Typography>
                         </Stack>
                       ) : (
@@ -919,9 +949,9 @@ const ReceivePage = () => {
                                   Number(c.lengthCm), Number(c.widthCm), effH, pL, pW, pH,
                                 );
                                 if (cap === null) return true;
-                                if (cap <= 0) return false;
-                                const packs = Number(pkg.quantityPackages) || 1;
-                                return cap >= packs;
+                                // ячейка подходит, если влезает хотя бы одна упаковка
+                                // (вся партия в одну ячейку класть не требуется)
+                                return cap > 0;
                               };
                               const matching = cellsFlat.filter((c) => !c.occupied
                                 && (!itemCond || c.rackStorageConditions === itemCond)
@@ -1073,11 +1103,14 @@ const ReceivePage = () => {
           {progress.failed.length > 0 && (
             <Alert severity="error" sx={{ mt: 2 }}>
               Ошибки ({progress.failed.length}):
-              {progress.failed.slice(0, 5).map((f, idx) => (
-                <Box key={idx}>
-                  • {f.productName}: {f.error}
-                </Box>
-              ))}
+              {progress.failed.slice(0, 5).map((f, idx) => {
+                const hasName = f.productName && f.productName !== '—';
+                return (
+                  <Box key={idx}>
+                    • {hasName ? `${f.productName}: ${f.error}` : f.error}
+                  </Box>
+                );
+              })}
               {progress.failed.length > 5 && <Box>… и ещё {progress.failed.length - 5}</Box>}
             </Alert>
           )}
@@ -1131,7 +1164,17 @@ const ReceivePage = () => {
                 storageConditions: it.storageConditions || it.storage_conditions || 'ROOM',
               }));
               setValue('items', prefilledItems);
-              notify(`Поставка выбрана — подтянуто ${prefilledItems.length} позиций, дозаполните партию/срок`, 'info');
+              const unmatched = prefilledItems.filter((it) => !it.productId).length;
+              if (unmatched > 0) {
+                notify(
+                  `Подтянуто ${prefilledItems.length} позиций, но ${unmatched} из них не сопоставлены с номенклатурой — `
+                    + 'выберите товар вручную в этих строках перед приёмкой',
+                  'warning',
+                  { duration: 8000 },
+                );
+              } else {
+                notify(`Поставка выбрана — подтянуто ${prefilledItems.length} позиций, дозаполните партию/срок`, 'info');
+              }
             } else {
               notify('Поставка выбрана — заполните позиции ниже', 'info');
             }
@@ -1528,6 +1571,7 @@ const DiscrepancyDialog = ({ session, userId, onClose, onSubmit }) => {
         generalNotes: generalNotes || null,
         items: realDiscrepancies.map((r) => ({
           productId: r.productId,
+          operationId: r.operationId,
           expectedQty: r.expectedQty,
           actualQty: Number(r.actualQty),
           defectDescription: r.defectDescription || null,
@@ -1539,7 +1583,8 @@ const DiscrepancyDialog = ({ session, userId, onClose, onSubmit }) => {
     }
   };
 
-  const canSubmit = realDiscrepancies.length > 0;
+  const hasInvalidActual = realDiscrepancies.some((r) => Number(r.actualQty) < 0);
+  const canSubmit = realDiscrepancies.length > 0 && !hasInvalidActual;
 
   return (
     <Dialog open onClose={busy ? undefined : onClose} maxWidth="md" fullWidth>

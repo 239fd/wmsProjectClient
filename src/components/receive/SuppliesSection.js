@@ -32,8 +32,17 @@ const STATUS_LABEL = {
   PLANNED: 'План',
   IN_PROGRESS: 'В процессе',
   ACCEPTED: 'Принята',
+  COMPLETED_WITH_DISCREPANCY: 'Принята с расхождением',
   REJECTED: 'Отклонена',
   CANCELLED: 'Отменена',
+};
+
+// Какие реальные статусы поставки показываем под каждой вкладкой.
+const TAB_STATUSES = {
+  PLANNED: ['PLANNED'],
+  IN_PROGRESS: ['IN_PROGRESS'],
+  ACCEPTED: ['ACCEPTED', 'COMPLETED_WITH_DISCREPANCY'],
+  CANCELLED: ['CANCELLED', 'REJECTED'],
 };
 
 const SOURCE_LABEL = {
@@ -68,9 +77,13 @@ const SuppliesSection = ({ onPickReceive, refreshSignal = 0 }) => {
     if (!orgId) return;
     setLoading(true);
     try {
-      const res = await supplyService.list({ status, size: 50 });
-      const content = res?.content || res || [];
-      setItems(Array.isArray(content) ? content : []);
+      const statuses = TAB_STATUSES[status] || [status];
+      const results = await Promise.all(
+        statuses.map((st) => supplyService.list({ status: st, size: 50 })
+          .then((res) => (Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : [])))
+          .catch(() => []))
+      );
+      setItems(results.flat());
     } catch (err) {
       notify(err?.message || 'Не удалось загрузить поставки', 'error');
       setItems([]);
@@ -83,9 +96,13 @@ const SuppliesSection = ({ onPickReceive, refreshSignal = 0 }) => {
     if (!orgId) return;
     const result = {};
     await Promise.all(STATUS_TABS.map(async (tab) => {
+      const statuses = TAB_STATUSES[tab.value] || [tab.value];
       try {
-        const res = await supplyService.list({ status: tab.value, size: 1 });
-        result[tab.value] = res?.totalElements ?? (Array.isArray(res?.content) ? res.content.length : 0);
+        const counts = await Promise.all(statuses.map((st) =>
+          supplyService.list({ status: st, size: 1 })
+            .then((res) => res?.totalElements ?? (Array.isArray(res?.content) ? res.content.length : 0))
+            .catch(() => 0)));
+        result[tab.value] = counts.reduce((s, n) => s + (n || 0), 0);
       } catch {
         result[tab.value] = 0;
       }
@@ -252,6 +269,7 @@ const SuppliesSection = ({ onPickReceive, refreshSignal = 0 }) => {
                             label={STATUS_LABEL[status] || status}
                             color={
                               status === 'ACCEPTED' ? 'success'
+                                : status === 'COMPLETED_WITH_DISCREPANCY' ? 'warning'
                                 : status === 'IN_PROGRESS' ? 'warning'
                                 : status === 'PLANNED' ? 'primary'
                                 : 'default'

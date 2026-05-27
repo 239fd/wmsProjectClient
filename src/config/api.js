@@ -60,6 +60,7 @@ export const API_ENDPOINTS = {
     CELL_BY_ID: (cellId) => `${API_BASE_URL}/api/racks/cells/${cellId}`,
     CELL_BY_CODE: (slotCode, warehouseId) =>
       `${API_BASE_URL}/api/racks/cells/by-code/${encodeURIComponent(slotCode)}?warehouseId=${warehouseId}`,
+    SLOT_CODE: (slotId) => `${API_BASE_URL}/api/racks/cells/${slotId}/code`,
     CELLS_FLAT: (warehouseId) => `${API_BASE_URL}/api/racks/warehouse/${warehouseId}/cells-flat`,
   },
 
